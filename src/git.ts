@@ -39,7 +39,7 @@ export const gitCommand = defineCommand("git", async (args, ctx) => {
             const matrix = await git.statusMatrix({ fs, dir });
             for (const [file, head, work] of matrix) {
               if (work === 0) await git.remove({ fs, dir, filepath: file });
-              else if (head !== work || work === 2) await git.add({ fs, dir, filepath: file });
+              else if (head !== work) await git.add({ fs, dir, filepath: file });
             }
           } else await git.add({ fs, dir, filepath: path.relative(dir, path.resolve(dir, f)) });
         }
