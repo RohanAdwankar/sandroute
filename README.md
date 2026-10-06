@@ -8,7 +8,8 @@ Most agent shell calls are `sed`, `grep`, `cat` and `git clone`. Those run in-pr
 
 - The command line is parsed. Every command name in it is collected, including those inside `$(...)` and pipelines.
 - If every name is known to the in-process shell, the line runs in-process.
-- If any name is a browser, toolchain or unknown binary, the whole line runs in the VM.
+- If any name is a browser, toolchain, network client or unknown binary, the whole line runs in the VM.
+- Questions about the machine (`command -v`, `which`, `env`, `$PATH`) and any absolute path outside the workspace also go to the VM. The in-process shell would answer about itself, and a real model concluded "chromium is not installed" from exactly that.
 - `git clone`, `init`, `add`, `commit`, `status` and `log` run in-process with no git binary. Other git subcommands go to the VM.
 - The VM boots on the first command that needs it and stays up.
 
@@ -22,6 +23,8 @@ Copy `opencode/bash.ts` to `<project>/.opencode/tool/bash.ts`. It has the same n
 
     npm test          # router and runtime unit tests
     npx tsx e2e/run.mts   # opencode driving the tool against a scripted model
+
+    npx tsx e2e/live.mts  # same, with a real free-tier model (opencode/big-pickle, no key)
 
 The e2e run uses a scripted OpenAI-compatible server in place of a real model, so the sequence of commands is fixed. It checks the routing, not model behaviour.
 

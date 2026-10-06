@@ -44,7 +44,7 @@ export class Sandroute {
 
   async run(command: string, cwd?: string): Promise<RunResult> {
     const t0 = Date.now();
-    const d = classify(this.known, command);
+    const d = classify(this.known, command, this.opts.workspace);
     let res: { stdout: string; stderr: string; exitCode: number };
     let booted = false;
     if (d.tier === "inprocess") {
