@@ -1,0 +1,22 @@
+{
+  "name": "sandroute",
+  "version": "0.1.0",
+  "description": "A bash tool for coding agents that stays in-process until a command needs a real machine, then boots a microVM.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "tsx --test test/router.test.ts test/sandroute.test.ts"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "isomorphic-git": "^1.37.0",
+    "just-bash": "^3.6.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.34",
+    "@types/node": "^22.0.0",
+    "opencode-ai": "^1.18.34",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
