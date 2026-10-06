@@ -1,14 +1,18 @@
 // Drop-in replacement for opencode's built-in bash tool.
 // Copy to <project>/.opencode/tool/bash.ts. Same name, so it overrides the built-in.
 import { tool } from "@opencode-ai/plugin";
-import { Sandroute } from "../src/index.ts";
+import { FirecrackerVm, Sandroute } from "../src/index.ts";
 
 const runners = new Map<string, Sandroute>();
 
 function forWorkspace(dir: string) {
   let r = runners.get(dir);
   if (!r) {
-    r = new Sandroute({ workspace: dir, logFile: process.env.SANDROUTE_LOG });
+    const vm =
+      process.env.SANDROUTE_VM === "firecracker"
+        ? new FirecrackerVm({ bin: process.env.SANDROUTE_FC_BIN, kernel: process.env.SANDROUTE_FC_KERNEL!, rootfs: process.env.SANDROUTE_FC_ROOTFS! })
+        : undefined; // default: the non-isolated host-process stand-in
+    r = new Sandroute({ workspace: dir, vm, logFile: process.env.SANDROUTE_LOG });
     runners.set(dir, r);
   }
   return r;

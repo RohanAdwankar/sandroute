@@ -28,8 +28,17 @@ Copy `opencode/bash.ts` to `<project>/.opencode/tool/bash.ts`. It has the same n
 
 The e2e run uses a scripted OpenAI-compatible server in place of a real model, so the sequence of commands is fixed. It checks the routing, not model behaviour.
 
+## Firecracker backend
+
+`FirecrackerVm` starts a Firecracker microVM, talks to a guest agent (`guest/agent.py`) over vsock, and keeps the workspace in step: before each VM command it pushes files that changed on the host, and after it pulls files the command changed. The workspace sits at the same absolute path in the guest.
+
+Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KERNEL` (vmlinux) and `SANDROUTE_FC_ROOTFS` (ext4 with bash, python3 and the agent started at boot with `--vsock-port 5000 --workspace <path from the sandroute.workspace kernel arg>`).
+
 ## Status
 
-- The VM tier is an interface. The only backend so far is `HostProcessVm`, a stand-in that runs host processes and is not isolated. A Firecracker backend needs KVM and has not been written.
-- Once a VM is up, files written in-process are visible to it only because the stand-in shares the host disk. A real microVM needs a sync step.
+- Tested: the router, the in-process git, the guest agent protocol and the file sync (agent run as a plain process on a unix socket), and the Firecracker API call sequence.
+- Not tested: booting a real microVM. It needs KVM, which the development machine lacked. The vsock handshake and the boot sequence follow Firecracker's documented API and have never run.
+- The rootfs image is not built by this repo yet, and the guest has no network, so `npm install` or `apt` in the VM cannot reach the internet.
+- Sync compares mtime and size and sends whole files, so a large workspace is slow to push.
+- `HostProcessVm` is the default and is not isolated.
 - A command that fails in-process is not retried in the VM.

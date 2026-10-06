@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "tsx --test test/router.test.ts test/sandroute.test.ts"
+    "test": "tsx --test test/router.test.ts test/sandroute.test.ts test/agent.test.ts"
   },
   "license": "Apache-2.0",
   "dependencies": {
