@@ -50,11 +50,19 @@ function api(sock: string, p: string, body: unknown): Promise<void> {
 export function vsockConnect(udsPath: string, port: number): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
     const s = net.connect(udsPath);
-    s.once("error", reject);
+    const fail = (e: Error) => { s.destroy(); reject(e); };
+    // Until the guest agent binds the port, firecracker answers a CONNECT by closing
+    // with no reply. Without this the promise never settles and boot() hangs on its
+    // first attempt instead of retrying.
+    const onClose = () => fail(new Error(`vsock port ${port} closed before the handshake`));
+    s.once("error", fail);
+    s.once("close", onClose);
     s.once("connect", () => s.write(`CONNECT ${port}\n`));
     s.once("data", (d) => {
+      s.removeListener("close", onClose);
+      s.removeListener("error", fail);
       if (d.toString().startsWith("OK")) resolve(s);
-      else reject(new Error("vsock handshake: " + d.toString().trim()));
+      else fail(new Error("vsock handshake: " + d.toString().trim()));
     });
   });
 }
