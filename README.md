@@ -37,8 +37,9 @@ Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KE
 ## Status
 
 - Tested: the router, the in-process git, the guest agent protocol and the file sync (agent run as a plain process on a unix socket), and the Firecracker API call sequence.
-- Not tested: booting a real microVM. It needs KVM, which the development machine lacked. The vsock handshake and the boot sequence follow Firecracker's documented API and have never run.
+- Booted for real on a host with KVM, against kernel 6.1.128 from Firecracker's CI bucket and a hand-built ext4 rootfs: cold boot to the result of the first VM command was 780ms, later VM commands ~10ms, and the sync moved files both ways. Firecracker appends `root=/dev/vda rw` itself, so the default boot args need nothing added.
 - The rootfs image is not built by this repo yet, and the guest has no network, so `npm install` or `apt` in the VM cannot reach the internet.
+- `FirecrackerVm` spawns firecracker with `stdio: "ignore"`, so there is no way to see the guest console when a boot goes wrong.
 - Sync compares mtime and size and sends whole files, so a large workspace is slow to push.
 - `HostProcessVm` is the default and is not isolated.
 - A command that fails in-process is not retried in the VM.
