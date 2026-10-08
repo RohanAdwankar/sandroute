@@ -1,8 +1,18 @@
 # Agents need more aggressive in-turn spin-down
 
 A cloud coding agent holds a microVM for the whole turn and uses it for almost none of
-it. Release the VM between tool calls and you can give back 86% of those VM-seconds for a
-third of a percent of turn latency. Here's the measurement.
+it. The question that decides whether anything can be done about that is a single one:
+**can you give the VM back between tool calls without the user noticing?**
+
+Measured against an agent running inside the VM, same turn, same work:
+
+| | agent inside the VM | sandroute, 500ms idle window |
+|---|---|---|
+| turn latency | 56253ms | 57034ms (**+1.4%**) |
+| VM allocated | 56253ms (100%) | 2406ms (**4.2%**) |
+
+Parity on what the user feels, a 24x cut in what the VM costs. The rest of this is how,
+and what it actually costs.
 
 The way a cloud coding agent runs today: a user asks a question, the service allocates a
 sandbox, the agent works inside it, and when the turn ends the sandbox goes away. On every
@@ -22,8 +32,8 @@ run — and the rest of the turn it is idle and allocated.
 - [Lazy boot isn't enough](#lazy-boot-isnt-enough)
 - [Making wake cheap](#making-wake-cheap)
 - [Releasing the VM](#releasing-the-vm)
-- [Numbers](#numbers)
-- [What it costs](#what-it-costs)
+- [Parity, and what it costs](#parity-and-what-it-costs)
+- [Caveats](#caveats)
 - [What's left](#whats-left)
 
 ## The cost is VM-seconds, not latency
@@ -161,60 +171,89 @@ absolutely nothing, and on a long turn it's most of the turn.
 Two rules keep it honest: in-process commands don't touch the idle timer (otherwise light
 work keeps a VM alive for no reason), and a command in flight blocks the release.
 
-## Numbers
+## Parity, and what it costs
 
-Same replayed turn, real Firecracker, 500-file workspace, sweeping the idle window:
+The baseline is an agent running inside the VM: the whole turn executes as one script in
+the guest, so every call is a plain local spawn with no vsock hop, and the VM is allocated
+for the whole turn by definition. That's the thing routing has to beat on cost without
+losing on latency.
 
-| idle window | VM allocated | VM-seconds saved | wakes | per wake |
-|---|---|---|---|---|
-| none (session-long) | 67.8% | 32.2% | 1 | 70ms |
-| 5000ms | 25.1% | 74.9% | 2 | 39ms |
-| 2000ms | 14.7% | 85.3% | 4 | 44ms |
-| 500ms | 4.2% | **95.8%** | 4 | 51ms |
+Same turn, 20 tool calls, 500-file workspace, real Firecracker:
 
-And the part I actually care about — what happens as turns get longer:
+| config | tool latency | p50 | p95 | turn | VM allocated |
+|---|---|---|---|---|---|
+| agent inside the VM | 150ms | 5.4ms | 27ms | 56253ms | **100%** |
+| sandroute, VM kept | 746ms | 18ms | 178ms | 56808ms (+1.1%) | 67.8% |
+| sandroute, 5s idle | 810ms | 18ms | 186ms | 56867ms (+1.2%) | 25.1% |
+| sandroute, 2s idle | 965ms | 18ms | 179ms | 57025ms (+1.4%) | 14.7% |
+| sandroute, 500ms idle | 979ms | 29ms | 167ms | 57034ms (+1.5%) | **4.2%** |
 
-| turn length | lazy boot only | idle release (2s) |
-|---|---|---|
-| 57s | 32.2% saved | 85.3% saved |
-| 176s | 10.4% saved | 85.7% saved |
+Two things to read off this.
 
-Lazy boot decays. Idle release is flat, because it isn't measuring "time before the first
-heavy call" — it's measuring how much of the turn genuinely needs a machine, which doesn't
-change when you make the turn longer.
+**Per tool call, routing is clearly slower.** 979ms of tool latency against 150ms, and a
+p50 of 29ms against 5.4ms. That is not parity and it would be dishonest to call it that.
 
-At a 500ms window the VM is allocated for **4.2%** of the turn. The other 95.8% is compute
-the baseline pays for and nobody uses.
+**Per turn it disappears.** 829ms spread across a 56-second turn is 1.5%. A user waiting
+on an agent cannot perceive it, because tool execution was never what they were waiting
+for — the model was.
 
-## What it costs
+And the decomposition matters, because it says where the cost isn't:
 
-The latency bill for all of this, at idle=2000 on the long turn: 12 wakes, 592ms total,
-against a 176-second turn. **0.33%.** You are trading a third of a percent of turn latency
-for 86% of your VM-seconds.
+```
+agent inside the VM            150ms
+sandroute, VM kept             746ms   +596ms   the two-tier routing
+sandroute, 500ms idle          979ms   +233ms   the spin-down itself
+```
 
-The honest caveats:
+**Spin-down is nearly free.** It costs 233ms and buys the drop from 67.8% to 4.2%. The
+expensive part is the in-process tier — a JS bash interpreter doing a recursive grep over
+500 files loses badly to native grep, and that's where the 596ms lives. Which is a
+pleasant result, because it means the aggressive thing is the cheap thing.
 
-- **Wake is 11ms of VM and ~35ms of workspace sync.** Measured per-wake cost was 39–51ms
-  on 500 files, and the restore is only 11–16ms of that. The rest is re-pushing the
-  workspace to a pristine guest, and it scales with file count: a no-op command in the VM
-  tier costs 1.7ms at 10 files, 9.4ms at 500, and 48.6ms at 3000. Frequent spin-down makes
-  this a recurring bill. The fix is to stop copying — share the workspace into the guest
-  with virtio-fs — at which point wake really is just the 11ms.
-- **The snapshot is keyed to the workspace path**, because the guest agent's root arrives on
-  the kernel command line and ends up baked into guest memory. Fine within a session. For
-  cross-session sharing you'd want a canonical in-guest path.
+It holds as turns get longer, which is the direction that matters:
+
+| turn | calls | baseline | sandroute, 2s idle |
+|---|---|---|---|
+| 56s | 20 | 100% allocated | 14.7% allocated, turn +1.4% |
+| 175s | 60 | 100% allocated | 14.3% allocated, turn +1.2% |
+
+Compare that to lazy boot on its own, which decays from 32.2% saved to 10.4% saved over
+the same two turns. Releasing the VM is flat because it isn't measuring "time before the
+first heavy call" — it's measuring how much of the turn genuinely needs a machine, and
+that doesn't change when you make the turn longer.
+
+## Caveats
+
+- **The in-process tier is where the latency goes, and it scales the wrong way.** The 596ms
+  is a JS bash interpreter losing to native `grep -r` over 500 files. On a monorepo that
+  gap widens, and the 1.5% with it. The honest version of the claim is "parity at this
+  workspace size"; somebody should push it until it breaks.
+- **Wake is ~15ms of VM and the rest is sync.** Per-wake cost measured 39-51ms on 500
+  files, and the restore is only 11-16ms of it. The remainder is re-pushing the workspace
+  to a pristine guest, and it scales with file count: a VM-tier no-op costs 1.7ms at 10
+  files, 9.4ms at 500, 48.6ms at 3000. Frequent spin-down makes that recurring. Sharing
+  the workspace in with virtio-fs instead of copying it would leave the wake at the
+  restore.
+- **The guest image has to be read-only.** A writable root drive cannot be shared by two
+  VMs, and under snapshots it corrupts: restore a snapshot over a backing file a later VM
+  has written and the guest's cached ext4 metadata no longer matches the disk. It surfaced
+  as `[Errno 74] Bad message` mid-run and e2fsck found real damage. The fix is a read-only
+  image with a tmpfs overlay for the writable root, which costs about 200ms of boot.
+- **A snapshot is tied to one workspace path**, because the guest agent's root arrives on
+  the kernel command line and ends up baked into guest memory. Fine within a session; a
+  canonical in-guest path would be needed to share one across sessions.
 - **The light tier's coverage decides the hit rate.** The router escalates on any unknown
   binary, so what fraction of calls stay in-process is really a statement about just-bash's
-  command coverage, not about anything clever in the routing. I haven't measured that
-  against real session traces, and it's the other half of the number.
-- **The 11ms restore had the memory file hot in page cache**, local disk, same host.
-  Firecracker's own published figure is ~125ms, which is still nowhere near 773ms.
-- **My turn traces are synthetic.** The shape — mostly light calls, heavy calls clustered,
-  multi-second think gaps — matches what I see agents do, but it's constructed, not
-  replayed from production.
+  command set. That number is unmeasured against real session traces, and it is the other
+  half of this.
+- **The 11ms restore had the memory file hot in page cache**, on local disk, same host.
+  Firecracker's published figure is ~125ms, still nowhere near a cold boot.
+- **The turn traces are synthetic.** The shape — mostly light calls, heavy calls clustered,
+  multi-second think gaps — matches what agents do, but it is constructed, not replayed
+  from production.
 - **The in-process tier is not isolated.** It reads and writes the real workspace directly.
-  "Safe stuff runs in process" is doing a lot of work in that sentence, and whether
-  just-bash's command set is a real security boundary is a separate question from this one.
+  Whether just-bash's command set is a real security boundary is a separate question from
+  this one, and a load-bearing one.
 
 ## What's left
 

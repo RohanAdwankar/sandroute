@@ -17,22 +17,21 @@ The in-process tier is [just-bash](https://github.com/vercel-labs/just-bash) wit
 
 ## Spin-down
 
-A session-long VM is allocated for the whole turn whether or not the turn needs a machine,
-and booting lazily only saves the time before the first heavy command -- a fraction that
-shrinks as turns get longer. So `Sandroute` takes `idleMs` and releases the VM during the
-gaps, and `FirecrackerVm` restores a pristine snapshot instead of cold booting, which makes
-a wake cost ~16ms instead of ~800ms. On a replayed 57s turn with 20 tool calls, 4 of them
-heavy:
+The question is whether routing can hold latency parity with an agent running inside the
+VM while cutting what the VM costs. Measured on the same turn, 20 tool calls, 500-file
+workspace, real Firecracker:
 
-| idle window | VM allocated | VM-seconds saved | wakes |
-|---|---|---|---|
-| none (session-long) | 67.8% | 32.2% | 1 |
-| 5000ms | 25.1% | 74.9% | 2 |
-| 2000ms | 14.7% | 85.3% | 4 |
-| 500ms | 4.2% | 95.8% | 4 |
+| config | tool latency | p50 | turn | VM allocated |
+|---|---|---|---|---|
+| agent inside the VM (baseline) | 150ms | 5.4ms | 56253ms | 100% |
+| sandroute, VM kept for the session | 746ms | 18ms | +1.1% | 67.8% |
+| sandroute, 2000ms idle window | 965ms | 18ms | +1.4% | 14.7% |
+| sandroute, 500ms idle window | 979ms | 29ms | +1.5% | 4.2% |
 
-Triple the turn and lazy boot alone drops to 10.4% saved while a 2s idle window holds at
-85.7%. The latency paid for that is 592ms of wakes across a 176s turn, or 0.33%.
+Per tool call routing is 6x slower; per turn that is 1.5%, because tool execution was
+never what the turn was waiting on. Of the 829ms, spin-down is only 233ms -- the rest is
+the in-process tier losing to native `grep -r`. On a 175s turn the saving holds (14.3%
+allocated, turn +1.2%) while lazy boot alone decays from 32.2% saved to 10.4%.
 
     npm run bench:turn -- --idle 2000 --repeat 3
 
