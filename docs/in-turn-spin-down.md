@@ -1,7 +1,8 @@
 # Agents need more aggressive in-turn spin-down
 
-Here's some notes on a thing I think agent platforms are currently paying for and
-shouldn't be.
+A cloud coding agent holds a microVM for the whole turn and uses it for almost none of
+it. Release the VM between tool calls and you can give back 86% of those VM-seconds for a
+third of a percent of turn latency. Here's the measurement.
 
 The way a cloud coding agent runs today: a user asks a question, the service allocates a
 sandbox, the agent works inside it, and when the turn ends the sandbox goes away. On every
@@ -13,9 +14,9 @@ clearly in one direction: agents run longer, make more tool calls, iterate more.
 takes ten minutes, you have held a microVM for ten minutes. Scale that across a fleet and
 you are paying for VMs that are, in wall-clock terms, approaching always-on.
 
-The thing is that an agent turn barely uses the machine. It mostly reads files, greps,
-edits, and then sits waiting on the model. I wanted to see what happens if you only
-allocate the VM for the slices that actually need it.
+An agent turn barely uses the machine, though. It mostly reads files, greps, edits, and
+then sits waiting on the model. The machine is needed for a browser, a compiler, a test
+run — and the rest of the turn it is idle and allocated.
 
 - [The cost is VM-seconds, not latency](#the-cost-is-vm-seconds-not-latency)
 - [Lazy boot isn't enough](#lazy-boot-isnt-enough)
@@ -27,11 +28,9 @@ allocate the VM for the slices that actually need it.
 
 ## The cost is VM-seconds, not latency
 
-First, the thing I got wrong, because it's the trap this idea invites.
-
-My instinct was that running commands outside the VM would be *faster*. It isn't. A
-microVM is not slow at running processes. Here's `bash -c 'grep -c needle f.ts'`, 200 reps,
-measured inside a Firecracker guest and then on the host it's running on:
+Worth being precise about what there is to win, because it isn't speed. A microVM is not
+slow at running processes. Here's `bash -c 'grep -c needle f.ts'`, 200 reps, measured
+inside a Firecracker guest and then on the host it's running on:
 
 ```
 pure-FC per command, measured inside the guest (200 reps): 1.24ms
@@ -39,15 +38,12 @@ same loop on the host, for reference                     : 1.16ms
 ```
 
 Within noise. And an in-process bash interpreter — [just-bash](https://github.com/vercel-labs/just-bash),
-which is what I'm using for the light tier — lands at 1.2–2.5ms. So there is no per-command
-latency to win. Not a little; none.
+which is what I'm using for the light tier — lands at 1.2–2.5ms. There is no per-command
+latency to win by staying out of the VM. Not a little; none. A VM feels expensive because
+*booting* one is, but you pay a boot once and then process spawn is host speed.
 
-"VM" feels expensive because *booting* one is, and that cost gets mentally amortized across
-every command inside it. But you pay a boot once and then process spawn is host speed.
-Anybody selling you per-command savings from getting out of the VM is selling you nothing.
-
-What you *can* win is the integral — how long a VM is allocated. That's the real bill, and
-it's the number I'll use throughout:
+What you can win is the integral — how long a VM is allocated. That's the bill, and it's
+the number for the rest of this:
 
 ```
 VM-seconds per turn = ∫ (VM allocated) dt      baseline: the entire turn
@@ -59,8 +55,7 @@ The obvious first move is to boot the VM lazily: start the turn with no VM, run 
 you can in-process, and only boot when a command genuinely needs a machine — a browser, a
 compiler, an unknown binary, a question about the machine itself.
 
-I built that (it's [sandroute](https://github.com/RohanAdwankar/sandroute)) and measured it
-on a replayed turn: 20 tool calls, think gaps between them standing in for model latency,
+That's [sandroute](https://github.com/RohanAdwankar/sandroute), measured on a replayed turn: 20 tool calls, think gaps between them standing in for model latency,
 4 of the 20 routed to the VM.
 
 ```
@@ -123,7 +118,7 @@ That works because the host owns the workspace and re-pushes it on wake, so the 
 needs to retain anything. The VM is disposable by construction, which means one snapshot
 serves every wake for the rest of the turn and I never pay the 1.5s create again.
 
-Two things that bit me getting there:
+Two constraints come with it:
 
 **vsock connections don't survive a snapshot.** If you snapshot with the agent connection
 open, the restored guest comes back holding a dead socket and the agent wedges. So
@@ -229,4 +224,4 @@ whether the idle window should be a constant at all, or predicted — an agent t
 `npm test` is probably about to run it again, and an agent that just read six files is
 probably going to read six more.
 
-Pretty fun to find out the boot was never the hard part.
+The boot was never the hard part. Holding the VM through the gaps was.
