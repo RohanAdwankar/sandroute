@@ -59,4 +59,7 @@ test("firecracker config is ordered boot-source, drive, machine, vsock, then sta
   const steps = buildConfig({ kernel: "/k", rootfs: "/r.ext4" }, "/v.sock", "/work");
   assert.deepEqual(steps.map((s) => s.path), ["/boot-source", "/drives/rootfs", "/machine-config", "/vsock", "/actions"]);
   assert.deepEqual(steps.at(-1)!.body, { action_type: "InstanceStart" });
+  // a writable root cannot be shared by two VMs, and corrupts when a snapshot is restored
+  // over a backing file a later VM has written
+  assert.equal((steps[1].body as { is_read_only: boolean }).is_read_only, true);
 });

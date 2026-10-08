@@ -13,7 +13,10 @@ export interface FirecrackerOptions {
   bin?: string;
   /** Uncompressed vmlinux. */
   kernel: string;
-  /** ext4 image containing bash, python3 and guest/agent.py started at boot. */
+  /**
+   * ext4 image containing bash, python3 and guest/agent.py started at boot. Mounted
+   * read-only, so its init must mount a tmpfs at the workspace path.
+   */
   rootfs: string;
   vcpus?: number;
   memMiB?: number;
@@ -38,7 +41,12 @@ export function buildConfig(o: FirecrackerOptions, vsockPath: string, workspace:
   const port = o.agentPort ?? 5000;
   return [
     { path: "/boot-source", body: { kernel_image_path: o.kernel, boot_args: `console=ttyS0 reboot=k panic=1 pci=off sandroute.workspace=${workspace} sandroute.port=${port} ${o.bootArgs ?? ""}`.trim() } },
-    { path: "/drives/rootfs", body: { drive_id: "rootfs", path_on_host: o.rootfs, is_root_device: true, is_read_only: false } },
+    // Read-only, for two reasons. A writable root means one image cannot back two VMs at
+    // once, and restoring a snapshot over a backing file that a later VM has since written
+    // corrupts the filesystem: the restored guest's cached ext4 metadata no longer matches
+    // the disk. The guest is disposable and the host owns the workspace, so the image never
+    // needs to be written -- the rootfs must mount a tmpfs at the workspace path instead.
+    { path: "/drives/rootfs", body: { drive_id: "rootfs", path_on_host: o.rootfs, is_root_device: true, is_read_only: true } },
     { path: "/machine-config", body: { vcpu_count: o.vcpus ?? 2, mem_size_mib: o.memMiB ?? 1024 } },
     { path: "/vsock", body: { guest_cid: 3, uds_path: vsockPath } },
     { path: "/actions", body: { action_type: "InstanceStart" } },
