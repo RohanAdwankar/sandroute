@@ -1,2 +1,16 @@
 #!/bin/sh
-exec /opt/pw-browsers/chromium-1194/chrome-linux/chrome "$@"
+# Puts a "chromium" on PATH for the e2e, whatever the host calls its browser.
+# e2e/run.mts prepends this directory to PATH, so the lookup has to skip it or
+# the shim would exec itself.
+self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+rest=$(printf %s "$PATH" | tr ':' '\n' | grep -vxF "$self_dir" | paste -sd:)
+for name in chromium chromium-browser google-chrome google-chrome-stable chrome; do
+  found=$(PATH="$rest" command -v "$name" 2>/dev/null) && exec "$found" "$@"
+done
+# playwright keeps its builds outside PATH
+for cand in /opt/pw-browsers/chromium-*/chrome-linux/chrome \
+            "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"/chromium-*/chrome-linux/chrome; do
+  [ -x "$cand" ] && exec "$cand" "$@"
+done
+echo "chromium: no browser on PATH or in a playwright install" >&2
+exit 127
