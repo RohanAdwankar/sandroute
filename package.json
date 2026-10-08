@@ -5,7 +5,9 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "tsx --test test/router.test.ts test/sandroute.test.ts test/agent.test.ts"
+    "test": "tsx --test test/router.test.ts test/sandroute.test.ts test/agent.test.ts",
+    "prewarm": "tsx bench/prewarm.mts",
+    "bench:turn": "tsx bench/turn.mts"
   },
   "license": "Apache-2.0",
   "dependencies": {
