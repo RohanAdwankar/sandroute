@@ -2,12 +2,13 @@
 // Usage: npx tsx e2e/live.mts [model]   (default: opencode/big-pickle, a free-tier model)
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const model = process.argv[2] ?? "opencode/big-pickle";
-const ws = mkdtempSync("/tmp/claude-0/live-ws-");
-const home = mkdtempSync("/tmp/claude-0/live-home-");
+const ws = mkdtempSync(path.join(tmpdir(), "live-ws-"));
+const home = mkdtempSync(path.join(tmpdir(), "live-home-"));
 const log = path.join(ws, "sandroute.log");
 
 writeFileSync(path.join(ws, "notes.txt"), "the quick brown fox\n");

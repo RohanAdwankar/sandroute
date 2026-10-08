@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { cpSync, mkdirSync, symlinkSync, mkdtempSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { startMock } from "./mock-llm.mts";
 
 const root = path.resolve(import.meta.dirname, "..");
-const ws = mkdtempSync("/tmp/claude-0/e2e-ws-");
-const home = mkdtempSync("/tmp/claude-0/e2e-home-");
+const ws = mkdtempSync(path.join(tmpdir(), "e2e-ws-"));
+const home = mkdtempSync(path.join(tmpdir(), "e2e-home-"));
 const log = path.join(ws, "sandroute.log");
 
 writeFileSync(path.join(ws, "notes.txt"), "the quick brown fox\n");
