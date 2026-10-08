@@ -19,6 +19,8 @@ export interface FirecrackerOptions {
   /** Extra kernel args appended to the defaults. */
   bootArgs?: string;
   agentPort?: number;
+  /** Pipe the guest console to this process. Off by default, and the only way to see why a boot failed. */
+  console?: boolean;
 }
 
 /** The ordered Firecracker API calls that configure and start a VM. Pure, so it can be tested without KVM. */
@@ -82,7 +84,9 @@ export class FirecrackerVm implements VmBackend {
     const dir = mkdtempSync(path.join(tmpdir(), "sandroute-fc-"));
     const apiSock = path.join(dir, "api.sock");
     const vsock = path.join(dir, "v.sock");
-    this.proc = spawn(this.o.bin ?? "firecracker", ["--api-sock", apiSock], { stdio: "ignore" });
+    this.proc = spawn(this.o.bin ?? "firecracker", ["--api-sock", apiSock], {
+      stdio: this.o.console ? ["ignore", "inherit", "inherit"] : "ignore",
+    });
     for (let i = 0; i < 50; i++) {
       try { await api(apiSock, "/machine-config", { vcpu_count: 1, mem_size_mib: 128 }); break; } catch { await sleep(50); }
     }

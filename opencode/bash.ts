@@ -10,7 +10,7 @@ function forWorkspace(dir: string) {
   if (!r) {
     const vm =
       process.env.SANDROUTE_VM === "firecracker"
-        ? new FirecrackerVm({ bin: process.env.SANDROUTE_FC_BIN, kernel: process.env.SANDROUTE_FC_KERNEL!, rootfs: process.env.SANDROUTE_FC_ROOTFS! })
+        ? new FirecrackerVm({ bin: process.env.SANDROUTE_FC_BIN, kernel: process.env.SANDROUTE_FC_KERNEL!, rootfs: process.env.SANDROUTE_FC_ROOTFS!, console: !!process.env.SANDROUTE_FC_CONSOLE })
         : undefined; // default: the non-isolated host-process stand-in
     r = new Sandroute({ workspace: dir, vm, logFile: process.env.SANDROUTE_LOG });
     runners.set(dir, r);
