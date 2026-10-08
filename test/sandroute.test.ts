@@ -9,9 +9,10 @@ import type { VmBackend } from "../src/vm.ts";
 class CountingVm implements VmBackend {
   name = "counting";
   boots = 0;
+  stops = 0;
   async boot() { this.boots++; }
   async exec() { return { stdout: "vm\n", stderr: "", exitCode: 0 }; }
-  async stop() {}
+  async stop() { this.stops++; }
 }
 
 function setup() {
@@ -46,4 +47,58 @@ test("git works in-process with no git binary", async () => {
   const log = await s.run("git log -n 1");
   assert.equal(c.tier, "inprocess");
   assert.match(log.stdout, /first/);
+});
+
+const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("an idle vm is released and the next heavy command brings it back", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 60 });
+  await s.run("chromium --version");
+  assert.equal(vm.boots, 1);
+  await settle(150);
+  assert.equal(vm.stops, 1, "idle vm should have been handed back");
+  assert.equal(s.releaseCount, 1);
+  const again = await s.run("chromium --version");
+  assert.equal(again.booted, true, "the next heavy command boots a fresh vm");
+  assert.equal(vm.boots, 2);
+  await s.stop();
+});
+
+test("in-process commands do not keep the vm alive", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  writeFileSync(path.join(ws, "a.txt"), "hello\n");
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 60 });
+  await s.run("chromium --version");
+  for (let i = 0; i < 4; i++) { await s.run("cat a.txt"); await settle(40); }
+  assert.equal(vm.stops, 1, "the idle timer should not be reset by in-process work");
+  await s.stop();
+});
+
+test("vm allocated time covers only the stretches the vm was up", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 60 });
+  await s.run("chromium --version");
+  await settle(150);
+  const afterRelease = s.vmAllocatedMs;
+  assert.ok(afterRelease >= 60 && afterRelease < 140, `expected ~60-140ms, got ${afterRelease}`);
+  await settle(100);
+  assert.equal(s.vmAllocatedMs, afterRelease, "a released vm must not keep accruing");
+  await s.stop();
+});
+
+test("the vm is kept while a command is in flight", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new CountingVm();
+  vm.exec = async () => { await settle(200); return { stdout: "", stderr: "", exitCode: 0 }; };
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 20 });
+  const p = s.run("chromium --version");
+  await settle(100);
+  assert.equal(await s.release(), false, "release must refuse while a command is running");
+  await p;
+  assert.equal(vm.stops, 0);
+  await s.stop();
 });
