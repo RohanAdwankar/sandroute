@@ -2,13 +2,16 @@
 // deterministic: it asks opencode to run a fixed list of bash commands, then stops.
 import http from "node:http";
 
-export function startMock(commands: string[]): Promise<{ port: number; close: () => void; requests: number }> {
+/** `thinkMs` holds each reply back, standing in for model latency -- which is most of a
+ *  real turn, and the only reason a sandbox has any idle time to reclaim. */
+export function startMock(commands: string[], thinkMs = 0): Promise<{ port: number; close: () => void; requests: number }> {
   const state = { port: 0, close: () => {}, requests: 0 };
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (d) => (body += d));
-    req.on("end", () => {
+    req.on("end", async () => {
       state.requests++;
+      if (thinkMs) await new Promise((r) => setTimeout(r, thinkMs));
       const j = JSON.parse(body || "{}");
       const msgs: any[] = j.messages ?? [];
       const hasTools = Array.isArray(j.tools) && j.tools.length > 0;
