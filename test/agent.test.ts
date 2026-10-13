@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentClient } from "../src/agent-client.ts";
 import { buildConfig } from "../src/firecracker.ts";
+import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
 // standing in for the guest disk. This exercises the protocol and the file sync, not the VM.
@@ -62,4 +63,28 @@ test("firecracker config is ordered boot-source, drive, machine, vsock, then sta
   // a writable root cannot be shared by two VMs, and corrupts when a snapshot is restored
   // over a backing file a later VM has written
   assert.equal((steps[1].body as { is_read_only: boolean }).is_read_only, true);
+});
+
+test("the manifest never follows a symlink out of the workspace", () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "ws-"));
+  const outside = mkdtempSync(path.join(tmpdir(), "outside-"));
+  writeFileSync(path.join(outside, "secret.txt"), "not the agent's to see\n");
+  writeFileSync(path.join(ws, "a.txt"), "mine\n");
+  mkdirSync(path.join(ws, "sub"), { recursive: true });
+  writeFileSync(path.join(ws, "sub/b.txt"), "also mine\n");
+  symlinkSync(outside, path.join(ws, "escape"));
+  symlinkSync(path.join(outside, "secret.txt"), path.join(ws, "peek.txt"));
+  assert.deepEqual([...manifest(ws).keys()].sort(), ["a.txt", "sub/b.txt"]);
+});
+
+test("the manifest skips node_modules and .git wherever they appear", () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "ws-"));
+  mkdirSync(path.join(ws, ".opencode/node_modules/pkg"), { recursive: true });
+  mkdirSync(path.join(ws, ".git/objects"), { recursive: true });
+  mkdirSync(path.join(ws, "node_modules_old"), { recursive: true });
+  writeFileSync(path.join(ws, ".opencode/node_modules/pkg/index.js"), "dep\n");
+  writeFileSync(path.join(ws, ".git/objects/abc"), "blob\n");
+  writeFileSync(path.join(ws, "node_modules_old/keep.txt"), "not a dep dir\n");
+  writeFileSync(path.join(ws, "a.txt"), "mine\n");
+  assert.deepEqual([...manifest(ws).keys()].sort(), ["a.txt", "node_modules_old/keep.txt"]);
 });

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync, chmodSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, lstatSync, realpathSync, statSync, writeFileSync, chmodSync, readdirSync, rmSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
@@ -8,22 +8,37 @@ export interface ExecResponse { stdout: string; stderr: string; code: number; ch
 
 type Manifest = Map<string, string>; // relative path -> "mtimeMs:size"
 
-const SKIP = ["node_modules/.cache"];
+/**
+ * Never synced, matched by directory name at any depth. Copying these over vsock on every
+ * wake costs far more than they are worth: a plain opencode workspace carries 3648 files
+ * of .opencode/node_modules, which is 73MB of base64 per wake. The guest skips the same
+ * names, so neither side reports the other's copy as a change.
+ */
+const SKIP = new Set(["node_modules", ".git"]);
 
 export function manifest(root: string): Manifest {
   const m: Manifest = new Map();
+  const base = realpathSync(root);
   const walk = (dir: string, rel: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (SKIP.some((s) => r.startsWith(s))) continue;
-      if (e.isDirectory()) walk(path.join(dir, e.name), r);
-      else if (e.isFile()) {
-        const st = statSync(path.join(dir, e.name));
-        m.set(r, `${Math.floor(st.mtimeMs)}:${st.size}`);
-      }
+      if (SKIP.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      // Runtimes disagree about whether a symlink to a directory is a directory -- bun
+      // reports one as a real directory, and not even consistently -- so the decision is
+      // made by resolving the path rather than by trusting its type. `dir` is always
+      // already canonical, so anything whose resolved form differs is a symlink or
+      // escapes the workspace. Either way it is skipped, which is what the guest does.
+      let real: string;
+      try { real = realpathSync(full); } catch { continue; }
+      if (real !== full) continue;
+      const st = statSync(full, { throwIfNoEntry: false });
+      if (!st) continue;
+      if (st.isDirectory()) walk(full, r);
+      else if (st.isFile()) m.set(r, `${Math.floor(st.mtimeMs)}:${st.size}`);
     }
   };
-  walk(root, "");
+  walk(base, "");
   return m;
 }
 
@@ -61,7 +76,9 @@ export class AgentClient {
     for (const [rel, sig] of now) {
       if (this.synced.get(rel) === sig) continue;
       const full = path.join(this.workspace, rel);
-      files.push({ path: rel, mode: statSync(full).mode & 0o777, b64: readFileSync(full).toString("base64") });
+      const st = lstatSync(full, { throwIfNoEntry: false });
+      if (!st || !st.isFile()) continue; // vanished, or no longer a regular file
+      files.push({ path: rel, mode: st.mode & 0o777, b64: readFileSync(full).toString("base64") });
     }
     const del = [...this.synced.keys()].filter((r) => !now.has(r));
     if (files.length || del.length) await this.request({ op: "sync", files, delete: del });
