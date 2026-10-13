@@ -1,14 +1,20 @@
 // A demo of unmodified opencode doing an ordinary job inside the sandbox.
 //
 // opencode is the real binary and knows nothing about any of this -- it just calls its
-// bash tool, which has been overridden by opencode/bash.ts. The job is a small todo app:
-// writing and reading files needs no machine, running python does, and the server it
-// ends up starting must not be taken away when the VM looks idle.
+// bash tool, which has been overridden by opencode/bash.ts.
+//
+// A real model picks every command. There is deliberately no scripted mode: a demo whose
+// point is "watch what actually happens" cannot have the commands chosen in advance, and
+// a fixed list reads as an agent deciding when it is nothing of the sort. Scripting
+// belongs in e2e/run.mts, which is a routing test, and bench/turn.mts, which is a
+// benchmark -- both need a fixed workload, and neither pretends to be an agent.
+//
+//   npm run demo                      opencode/big-pickle, free, no key
+//   DEMO_MODEL=opencode/x npm run demo
 import { spawn, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { startMock } from "../e2e/mock-llm.mts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const A = process.env.SANDROUTE_ASSETS ?? "/home/rohan/fcassets";
@@ -76,46 +82,12 @@ elif cmd == "serve":
 // touch the host directly -- so the prompt asks for bash. That is a real limit of the
 // current design, not a stage direction.
 const PROMPT = "make me a little todo app in todo.py, put a couple of things in it, then serve it on port 8099. use the bash tool for everything, one command per step.";
-const commands = [
-  "ls",
-  `cat > todo.py <<'PY'\n${APP}\nPY`,
-  "wc -l todo.py",
-  `python3 todo.py add "write the blog post"`,
-  `python3 todo.py add "benchmark the sandbox"`,
-  "cat todos.json",
-  `sed -i 's/write the blog post/write the blog post (draft)/' todos.json`,
-  "python3 todo.py list",
-  "nohup python3 todo.py serve 8099 >/dev/null 2>&1 & echo serving on 8099",
-  `python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8099/', timeout=3).read().decode())"`,
-];
-// --live lets a real model decide the commands. opencode's free tier needs no key, so
-// there is no good reason for a demo to be scripted; the mock stays for the e2e test,
-// where a fixed command list is the point.
-const LIVE = process.argv.includes("--live");
 const MODEL = process.env.DEMO_MODEL ?? "opencode/big-pickle";
-const THINK = 1500;
-const mock = LIVE ? null : await startMock(commands, THINK, "Done — todo.py is written, two items are in todos.json, and it's serving on :8099.");
 writeFileSync(path.join(ws, "opencode.json"), JSON.stringify(
-  LIVE
-    ? { $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }
-    : {
-        $schema: "https://opencode.ai/config.json",
-        model: "mock/scripted", small_model: "mock/scripted",
-        provider: { mock: { npm: "@ai-sdk/openai-compatible", name: "mock",
-          options: { baseURL: `http://127.0.0.1:${mock!.port}/v1`, apiKey: "x" },
-          models: { scripted: { name: "scripted", tool_call: true, limit: { context: 100000, output: 4000 } } } } },
-        permission: { "*": "allow" }, autoupdate: false,
-      }, null, 2));
+  { $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }, null, 2));
 
 say(`${C.bold}${C.ink}sandroute${C.off} ${C.dim}— unmodified opencode, routed between an in-process shell and a Firecracker microVM${C.off}`);
-say(`${C.dim}700ms idle window · opencode ${execFileSync(path.join(root, "node_modules/.bin/opencode"), ["--version"]).toString().trim()}${C.off}`);
-// The disclosure belongs in the frame, not in a caption that can be dropped. A scripted
-// run must not be able to pass itself off as an agent making decisions.
-say(LIVE
-  ? `${C.green}${C.bold}LIVE${C.off} ${C.green}— ${MODEL} chooses every command below.${C.off}`
-  : `${C.red}${C.bold}SCRIPTED${C.off}${C.red} — the commands below are a fixed list, not chosen by a model, and the`);
-if (!LIVE) say(`${C.red}pause between them is an injected ${THINK}ms sleep. opencode, the microVM, the commands`);
-if (!LIVE) say(`${C.red}and every timing are real. Run with --live for a model that decides for itself.${C.off}`);
+say(`${C.dim}700ms idle window · opencode ${execFileSync(path.join(root, "node_modules/.bin/opencode"), ["--version"]).toString().trim()} · live model ${MODEL}, which chooses every command below${C.off}`);
 say();
 {
   const { FirecrackerVm } = await import("../src/index.js");
@@ -169,7 +141,7 @@ const env = { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.
 let reply = "";
 const status = await new Promise<number | null>((resolve) => {
   const c = spawn(path.join(root, "node_modules/.bin/opencode"),
-    ["run", "-m", LIVE ? MODEL : "mock/scripted", PROMPT], { cwd: ws, env, stdio: ["ignore", "pipe", "pipe"] });
+    ["run", "-m", MODEL, PROMPT], { cwd: ws, env, stdio: ["ignore", "pipe", "pipe"] });
   const kill = setTimeout(() => c.kill("SIGKILL"), 420000);
   c.on("close", () => clearTimeout(kill));
   c.stdout.on("data", (d) => (reply += d));
@@ -177,7 +149,6 @@ const status = await new Promise<number | null>((resolve) => {
 });
 await sleep(2400);
 clearInterval(tail); clearInterval(watch);
-mock?.close();
 
 const entries = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
 const vm = entries.filter((e) => e.tier === "vm").length;
