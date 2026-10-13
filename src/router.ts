@@ -45,6 +45,29 @@ const BUILTINS = new Set([
 const ABS_PATH_RE = /(?<![\w.~$/-])\/[A-Za-z0-9_.][^\s;|&<>()'"`]*/g;
 const DEV_OK = new Set(["/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr"]);
 
+/**
+ * Blank out heredoc bodies. They are data the agent is writing, not shell: an app that
+ * contains "</li>" or a config mentioning /etc is not a reason to boot a VM, and files
+ * full of absolute paths are ordinary. The command-name scan already ignores them --
+ * this is for the regex scans below, which see the raw text.
+ */
+export function stripHeredocs(command: string): string {
+  if (!command.includes("<<")) return command;
+  const lines = command.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i++];
+    out.push(line);
+    for (const h of line.matchAll(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g)) {
+      const delim = h[2];
+      while (i < lines.length && lines[i].trim() !== delim) i++;
+      if (i < lines.length) out.push(lines[i++]); // keep the delimiter, drop the body
+    }
+  }
+  return out.join("\n");
+}
+
 function outsideWorkspace(command: string, workspace: string): string | undefined {
   for (const m of command.matchAll(ABS_PATH_RE)) {
     const p = m[0].replace(/[,:]+$/, "");
@@ -69,11 +92,12 @@ export function classify(known: Set<string>, command: string, workspace: string)
     if (MACHINE_QUERIES.has(name)) return { tier: "vm", reason: `${name} asks about the machine, not the workspace` };
   }
 
-  const outside = outsideWorkspace(command, workspace);
+  const shell = stripHeredocs(command);
+  const outside = outsideWorkspace(shell, workspace);
   if (outside) return { tier: "vm", reason: `${outside} is outside the workspace, which only the VM can see` };
-  if (/\$\{?PATH\b/.test(command)) return { tier: "vm", reason: "reads the machine's PATH" };
+  if (/\$\{?PATH\b/.test(shell)) return { tier: "vm", reason: "reads the machine's PATH" };
 
-  for (const m of command.matchAll(GIT_RE)) {
+  for (const m of shell.matchAll(GIT_RE)) {
     if (!INPROCESS_GIT.has(m[1])) return { tier: "vm", reason: `git ${m[1]} not implemented in-process` };
   }
 

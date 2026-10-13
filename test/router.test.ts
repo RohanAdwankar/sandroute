@@ -54,3 +54,16 @@ test("paths outside the workspace go to the vm, paths inside do not", () => {
 test("network clients go to the vm", () => {
   assert.equal(tier("curl -s https://example.com"), "vm");
 });
+
+test("a heredoc body is data, not shell", () => {
+  // writing a file is writing a file, whatever is in it
+  assert.equal(tier(`cat > page.py <<'PY'\nrows = "<li>x</li>"\nCONF = "/etc/passwd"\nPY`), "inprocess");
+  assert.equal(tier(`cat > a.sh <<'SH'\ngit rebase main\nexport PATH=/usr/bin\nSH`), "inprocess");
+  // an unquoted delimiter is still a heredoc
+  assert.equal(tier(`cat > n.txt <<EOF\nsee /var/log/syslog\nEOF`), "inprocess");
+  // two heredocs on one line, bodies in order
+  assert.equal(tier(`cat <<A > x && cat <<B > y\n/etc/one\nA\n/etc/two\nB`), "inprocess");
+  // and the shell around the heredoc is still read
+  assert.equal(tier(`cat > f.txt <<'EOF' && cat /etc/hosts\njust text\nEOF`), "vm");
+  assert.equal(tier(`cat /etc/hosts`), "vm");
+});

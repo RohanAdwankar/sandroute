@@ -1,55 +1,85 @@
-// A demo of unmodified opencode running inside the sandbox.
+// A demo of unmodified opencode doing an ordinary job inside the sandbox.
 //
 // opencode is the real binary and knows nothing about any of this -- it just calls its
-// bash tool, which has been overridden by opencode/bash.ts. This narrates what the
-// router does with each call, and watches the host for the microVM coming and going.
+// bash tool, which has been overridden by opencode/bash.ts. The job is a small todo app:
+// writing and reading files needs no machine, running python does, and the server it
+// ends up starting must not be taken away when the VM looks idle.
 import { spawn, execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startMock } from "../e2e/mock-llm.mts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const A = process.env.SANDROUTE_ASSETS ?? "/home/rohan/fcassets";
-const ws = mkdtempSync(path.join(tmpdir(), "demo-ws-"));
+const ws = mkdtempSync(path.join(tmpdir(), "todo-"));
 const home = mkdtempSync(path.join(tmpdir(), "demo-home-"));
 const log = path.join(ws, "sandroute.log");
 
 const C = { dim: "\x1b[38;5;245m", ink: "\x1b[38;5;252m", blue: "\x1b[38;5;75m",
-            amber: "\x1b[38;5;215m", green: "\x1b[38;5;114m", red: "\x1b[38;5;203m",
-            bold: "\x1b[1m", off: "\x1b[0m" };
+            amber: "\x1b[38;5;215m", green: "\x1b[38;5;114m", bold: "\x1b[1m", off: "\x1b[0m" };
 let t0 = Date.now();
 const stamp = () => `${C.dim}${((Date.now() - t0) / 1000).toFixed(1).padStart(5)}s${C.off}`;
 const say = (s = "") => console.log(s);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-writeFileSync(path.join(ws, "notes.txt"), "the quick brown fox\n");
-for (let i = 0; i < 400; i++) {
-  const d = path.join(ws, `src/d${Math.floor(i / 40)}`);
-  mkdirSync(d, { recursive: true });
-  writeFileSync(path.join(d, `f${i}.ts`), `export const v${i} = "needle";\n`);
-}
+writeFileSync(path.join(ws, "README.md"), "# scratch\n\nnothing here yet\n");
 mkdirSync(path.join(ws, ".opencode/tool"), { recursive: true });
 writeFileSync(path.join(ws, ".opencode/tool/bash.ts"),
   readFileSync(path.join(root, "opencode/bash.ts"), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts")));
 symlinkSync(path.join(root, "node_modules"), path.join(ws, "node_modules"));
 
+const APP = `import json, os, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STORE = os.path.join(HERE, "todos.json")
+
+def load():
+    return json.load(open(STORE)) if os.path.exists(STORE) else []
+
+def save(items):
+    json.dump(items, open(STORE, "w"), indent=2)
+
+def serve(port):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            rows = "".join("<li>%s</li>" % t["text"] for t in load())
+            page = ("<h1>todo</h1><ul>%s</ul>" % rows).encode()
+            self.send_response(200)
+            self.send_header("content-type", "text/html")
+            self.send_header("content-length", str(len(page)))
+            self.end_headers()
+            self.wfile.write(page)
+        def log_message(self, *a):
+            pass
+    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+
+cmd = sys.argv[1]
+if cmd == "add":
+    items = load(); items.append({"text": sys.argv[2]}); save(items)
+    print("added:", sys.argv[2])
+elif cmd == "list":
+    for i, t in enumerate(load(), 1):
+        print("%d. %s" % (i, t["text"]))
+elif cmd == "serve":
+    serve(int(sys.argv[2]))`;
+
+const PROMPT = "make me a little todo app, put a couple of things in it, and serve it";
 const commands = [
-  "cat notes.txt",                                       // light
-  "grep -rl needle src | head -3",                       // light
-  "uname -r",                                            // needs a machine -> VM wakes
-  "python3 -c 'print(\"this ran inside the microvm\")'",  // VM
-  // the agent goes back to reading and editing. the VM has nothing to do, so it goes away
-  "sed -i 's/quick/slow/' notes.txt && cat notes.txt",   // light
-  "cat src/d0/f1.ts",                                    // light
-  "grep -c needle src/d0/f2.ts",                         // light
-  "python3 -c 'print(\"and the microvm came back\")'",    // VM wakes again
-  // now the agent leaves something running. the VM must not be taken away
-  "nohup python3 -m http.server 8099 >/dev/null 2>&1 & echo server started",
-  "python3 -c \"import urllib.request as u; print('the server answers HTTP', u.urlopen('http://127.0.0.1:8099/',timeout=3).status)\"",
+  "ls",
+  `cat > todo.py <<'PY'\n${APP}\nPY`,
+  "wc -l todo.py",
+  `python3 todo.py add "write the blog post"`,
+  `python3 todo.py add "benchmark the sandbox"`,
+  "cat todos.json",
+  `sed -i 's/write the blog post/write the blog post (draft)/' todos.json`,
+  "python3 todo.py list",
+  "nohup python3 todo.py serve 8099 >/dev/null 2>&1 & echo serving on 8099",
+  `python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8099/', timeout=3).read().decode())"`,
 ];
 const THINK = 1500;
-const mock = await startMock(commands, THINK);
+const mock = await startMock(commands, THINK, "Done — todo.py is written, two items are in todos.json, and it's serving on :8099.");
 writeFileSync(path.join(ws, "opencode.json"), JSON.stringify({
   $schema: "https://opencode.ai/config.json",
   model: "mock/scripted", small_model: "mock/scripted",
@@ -60,21 +90,19 @@ writeFileSync(path.join(ws, "opencode.json"), JSON.stringify({
 }, null, 2));
 
 say(`${C.bold}${C.ink}sandroute${C.off} ${C.dim}— unmodified opencode, routed between an in-process shell and a Firecracker microVM${C.off}`);
-say(`${C.dim}400-file workspace · ${THINK}ms of model latency between calls · 700ms idle window · opencode ${execFileSync(path.join(root, "node_modules/.bin/opencode"), ["--version"]).toString().trim()}${C.off}`);
+say(`${C.dim}700ms idle window · ${THINK}ms of model latency between calls · opencode ${execFileSync(path.join(root, "node_modules/.bin/opencode"), ["--version"]).toString().trim()}${C.off}`);
 say();
-
-// Prime the snapshot before the clock starts. In production this ships with the image;
-// paying for it here would just be measuring a cold boot.
 {
   const { FirecrackerVm } = await import("../src/index.js");
   const warm = new FirecrackerVm({ bin: `${A}/firecracker`, kernel: `${A}/vmlinux-6.1.128`,
     rootfs: `${A}/rootfs.ext4`, snapshotDir: `${A}/snapcache` });
   const t = Date.now();
   await warm.boot(ws); await warm.stop();
-  say(`${C.dim}snapshot primed in ${Date.now() - t}ms (done once, ahead of the session)${C.off}`);
-  say(`${C.dim}starting opencode…${C.off}`);
-  say();
+  say(`${C.dim}snapshot primed in ${((Date.now() - t) / 1000).toFixed(1)}s — once, ahead of the session${C.off}`);
 }
+say();
+say(`${C.bold}${C.green}> ${PROMPT}${C.off}`);
+say();
 
 const vmUp = () => { try { return execFileSync("pgrep", ["-c", "-x", "firecracker"]).toString().trim() !== "0"; } catch { return false; } };
 let wasUp = false;
@@ -87,17 +115,21 @@ const watch = setInterval(() => {
   }
 }, 60);
 
+const show = (cmd: string) => {
+  const ls = cmd.split("\n");
+  return ls.length > 1 ? `${ls[0]} … (${ls.length} lines)` : ls[0].slice(0, 62);
+};
 let seen = 0;
 const tail = setInterval(() => {
   if (!existsSync(log)) return;
   const lines = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   for (const l of lines.slice(seen)) {
     const j = JSON.parse(l);
-    if (seen === 0 && lines.indexOf(l) === 0) t0 = Date.now() - j.ms;  // clock starts at the first tool call
+    if (seen === 0 && lines.indexOf(l) === 0) t0 = Date.now() - j.ms;
     const tier = j.tier === "vm"
       ? `${C.amber}vm${j.booted ? ` wake ${j.bootMs}ms` : "        "}${C.off}`
       : `${C.blue}in-process${C.off}`;
-    say(`${stamp()} ${tier}  ${String(j.ms).padStart(4)}ms  ${C.ink}${j.command.slice(0, 58)}${C.off}`);
+    say(`${stamp()} ${tier}  ${String(j.ms).padStart(4)}ms  ${C.ink}${show(j.command)}${C.off}`);
     say(`        ${C.dim}${j.reason}${C.off}`);
   }
   seen = lines.length;
@@ -109,22 +141,28 @@ const env = { ...process.env, NO_PROXY: "127.0.0.1,localhost", no_proxy: "127.0.
   SANDROUTE_FC_BIN: `${A}/firecracker`, SANDROUTE_FC_KERNEL: `${A}/vmlinux-6.1.128`,
   SANDROUTE_FC_ROOTFS: `${A}/rootfs.ext4`, SANDROUTE_FC_SNAPSHOT_DIR: `${A}/snapcache` };
 
+let reply = "";
 const status = await new Promise<number | null>((resolve) => {
   const c = spawn(path.join(root, "node_modules/.bin/opencode"),
-    ["run", "-m", "mock/scripted", "work through the steps"], { cwd: ws, env, stdio: ["ignore", "ignore", "ignore"] });
+    ["run", "-m", "mock/scripted", PROMPT], { cwd: ws, env, stdio: ["ignore", "pipe", "pipe"] });
+  c.stdout.on("data", (d) => (reply += d));
   c.on("close", resolve);
 });
-await sleep(3200);   // let the idle window prove it keeps the VM for the server
+await sleep(2400);
 clearInterval(tail); clearInterval(watch);
 mock.close();
 
 const entries = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
 const vm = entries.filter((e) => e.tier === "vm").length;
 const alloc = Math.max(...entries.map((e) => e.vmAllocatedMs));
-const turn = Date.now() - t0;
+const turn = Date.now() - t0 - 2400;
 say();
-say(`${C.dim}${"─".repeat(78)}${C.off}`);
-say(`${C.bold}opencode exited ${status}${C.off}   ${C.dim}·${C.off}   ${entries.length} tool calls, ${vm} needed the machine`);
-say(`${C.green}the microVM was allocated ${((alloc / turn) * 100).toFixed(1)}% of the turn${C.off} ${C.dim}(${(alloc/1000).toFixed(1)}s of ${(turn/1000).toFixed(1)}s) — always-on would be 100%${C.off}`);
-say(`${C.amber}it is still up right now${C.off} ${C.dim}— a server is running in there, so releasing it would kill it${C.off}`);
-say(`${C.dim}workspace: ${ws}${C.off}`);
+const last = reply.trim().split("\n").filter(Boolean).pop() ?? "";
+say(`${C.ink}${last.replace(/\x1b\[[0-9;]*m/g, "").slice(0, 86)}${C.off}`);
+say();
+say(`${C.dim}${"─".repeat(86)}${C.off}`);
+say(`${C.bold}opencode exited ${status}${C.off}  ${C.dim}·${C.off}  ${entries.length} tool calls, ${vm} of them needed the machine`);
+say(`${C.green}the microVM was allocated ${((alloc / turn) * 100).toFixed(0)}% of the turn${C.off} ${C.dim}(${(alloc / 1000).toFixed(1)}s of ${(turn / 1000).toFixed(1)}s) — always-on would be 100%${C.off}`);
+say(`${C.amber}it is still up now${C.off} ${C.dim}— the todo server is running in there, so releasing it would kill it${C.off}`);
+// the guest wrote this file; the host has it because the sync brought it back
+say(`${C.dim}todos.json, on the host:${C.off} ${C.ink}${readFileSync(path.join(ws, "todos.json"), "utf8").replace(/\s+/g, " ").trim().slice(0, 74)}${C.off}`);
