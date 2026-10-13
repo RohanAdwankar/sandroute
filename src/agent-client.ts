@@ -83,6 +83,11 @@ export class AgentClient {
     return r;
   }
 
+  /** No workspace sync: this asks about the machine, not about files. */
+  busy(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }> {
+    return this.request({ op: "busy" });
+  }
+
   close() {
     this.rl?.close();
     this.sock?.destroy();

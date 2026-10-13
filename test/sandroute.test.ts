@@ -102,3 +102,46 @@ test("the vm is kept while a command is in flight", async () => {
   assert.equal(vm.stops, 0);
   await s.stop();
 });
+
+class BusyVm extends CountingVm {
+  procs: { pid: number; comm: string }[] = [];
+  async busy() { return { busy: this.procs.length > 0, procs: this.procs }; }
+}
+
+test("a vm with a background process is pinned, not killed", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new BusyVm();
+  vm.procs = [{ pid: 42, comm: "node" }];
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 40 });
+  await s.run("chromium --version");
+  await settle(200);
+  assert.equal(vm.stops, 0, "a backgrounded server must survive the idle timer");
+  assert.ok(s.pinnedCount >= 1, "the refusal should be counted");
+  assert.deepEqual(s.lastPinned, [{ pid: 42, comm: "node" }]);
+  // once it exits, the next sweep lets the vm go
+  vm.procs = [];
+  await settle(200);
+  assert.equal(vm.stops, 1, "a quiescent vm should be released");
+  await s.stop();
+});
+
+test("a backend that cannot answer busy keeps the vm", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new BusyVm();
+  vm.busy = async () => { throw new Error("vsock gone"); };
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 40 });
+  await s.run("chromium --version");
+  await settle(200);
+  assert.equal(vm.stops, 0, "unprovable idleness must not count as idle");
+  await s.stop();
+});
+
+test("a backend with no busy probe still releases on the timer", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 40 });
+  await s.run("chromium --version");
+  await settle(200);
+  assert.equal(vm.stops, 1);
+  await s.stop();
+});

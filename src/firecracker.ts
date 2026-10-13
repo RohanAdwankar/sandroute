@@ -217,6 +217,10 @@ export class FirecrackerVm implements VmBackend {
     return { stdout: r.stdout, stderr: r.stderr, exitCode: r.code };
   }
 
+  busy() {
+    return this.client!.busy();
+  }
+
   async stop(): Promise<void> {
     this.client?.close();
     this.client = undefined;

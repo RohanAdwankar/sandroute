@@ -14,5 +14,11 @@ export interface VmBackend {
   /** Boot the machine. Called at most once, on the first command that needs it. */
   boot(workspace: string): Promise<void>;
   exec(command: string, opts: { cwd: string; env?: Record<string, string> }): Promise<VmResult>;
+  /**
+   * Anything still alive in the machine that no command is waiting on -- a server the
+   * agent backgrounded, a cron. A backend that cannot tell leaves this undefined and
+   * the VM is released on the idle timer alone.
+   */
+  busy?(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }>;
   stop(): Promise<void>;
 }

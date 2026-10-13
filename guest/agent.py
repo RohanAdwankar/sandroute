@@ -5,6 +5,7 @@ Protocol: one JSON object per line in each direction.
   {"op":"ping"}                                   -> {"ok":true}
   {"op":"sync","files":[{path,mode,b64}],"delete":[path]}   -> {"ok":true}
   {"op":"exec","cmd":str,"cwd":str,"env":{}}      -> {"stdout","stderr","code","changed":[{path,mode,b64}],"deleted":[path]}
+  {"op":"busy"}                                   -> {"busy":bool,"procs":[{pid,comm}]}
 Paths are relative to the workspace root. The workspace lives at the same absolute path in the guest as on the host.
 """
 import argparse, base64, json, os, socket, subprocess, sys
@@ -45,10 +46,63 @@ def safe(root, rel):
     return full
 
 
+def _ppid(pid):
+    with open("/proc/%d/stat" % pid) as f:
+        return int(f.read().rsplit(") ", 1)[1].split()[1])
+
+
+def live_processes():
+    """Processes in the guest that the agent did not spawn for the request in hand.
+
+    A command that backgrounds a server returns immediately, so "no command running"
+    is not the same as "nothing running". The host has to know the difference before
+    it kills the VM, because the next wake restores a pristine snapshot and anything
+    still in here would vanish without a trace.
+
+    Only userspace descendants of init count. Kernel threads and the kernel's usermode
+    helpers hang off kthreadd (pid 2) and are not the agent's doing; the agent's own
+    ancestor chain is its own doing.
+    """
+    mine = set()
+    pid = os.getpid()
+    while pid > 1 and pid not in mine:
+        mine.add(pid)
+        try:
+            pid = _ppid(pid)
+        except (OSError, IndexError, ValueError):
+            break
+
+    out = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        if pid <= 1 or pid in mine:
+            continue
+        try:
+            with open("/proc/%d/cmdline" % pid, "rb") as f:
+                if not f.read().strip(b"\x00"):
+                    continue  # kernel thread: no userspace at all
+            walk, seen = pid, set()
+            while walk > 1 and walk not in seen:
+                seen.add(walk)
+                walk = _ppid(walk)
+            if walk != 1:
+                continue  # rooted at kthreadd, or gone: not something the agent started
+            with open("/proc/%d/comm" % pid) as f:
+                out.append({"pid": pid, "comm": f.read().strip()})
+        except (OSError, IndexError, ValueError):  # exited while we were looking
+            continue
+    return out
+
+
 def handle(root, req):
     op = req.get("op")
     if op == "ping":
         return {"ok": True}
+    if op == "busy":
+        procs = live_processes()
+        return {"busy": bool(procs), "procs": procs}
     if op == "sync":
         for rel in req.get("delete", []):
             try:

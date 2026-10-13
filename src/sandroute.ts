@@ -40,11 +40,15 @@ export class Sandroute {
   private vmBoot?: Promise<void>;
   private inFlight = 0;
   private idleTimer?: NodeJS.Timeout;
+  /** What was still running the last time a release was refused. */
+  lastPinned: { pid: number; comm: string }[] = [];
   /** Wall time the VM has been allocated, which is what a microVM actually costs. */
   private allocMs = 0;
   private allocSince?: number;
   bootCount = 0;
   releaseCount = 0;
+  /** Times the idle timer fired but something was still alive in the VM. */
+  pinnedCount = 0;
 
   constructor(private opts: SandrouteOptions) {
     this.vm = opts.vm ?? new HostProcessVm();
@@ -108,10 +112,29 @@ export class Sandroute {
    * Hand the VM back. The next VM-tier command brings one up again, which is cheap when
    * the backend restores a snapshot. Safe to call at any time: a command in flight keeps
    * the VM, and the idle timer re-arms when it finishes.
+   *
+   * A command that backgrounds a server returns straight away, so an idle timer alone
+   * would kill it -- and since the next wake restores a pristine snapshot, it would
+   * vanish without a trace. While anything is alive in there, the VM is pinned.
    */
   async release(): Promise<boolean> {
     clearTimeout(this.idleTimer);
     if (!this.vmUp || this.inFlight > 0) return false;
+    if (this.vm.busy) {
+      let live;
+      try {
+        live = await this.vm.busy();
+      } catch {
+        live = { busy: true, procs: [] }; // cannot prove it is idle, so keep it
+      }
+      if (live.busy) {
+        this.pinnedCount++;
+        this.lastPinned = live.procs;
+        if (this.inFlight === 0 && this.vmUp) this.armIdle(); // look again later
+        return false;
+      }
+    }
+    if (!this.vmUp || this.inFlight > 0) return false; // a command arrived while we asked
     this.vmUp = false;
     this.vmBoot = undefined;
     if (this.allocSince !== undefined) {
