@@ -10,18 +10,17 @@ Paths are relative to the workspace root. The workspace lives at the same absolu
 """
 import argparse, base64, json, os, socket, subprocess, sys
 
-EXCLUDE_DIRS = {"node_modules/.cache"}
+EXCLUDE_DIRS = {"node_modules", ".git"}  # must match SKIP in agent-client.ts
 
 
 def snapshot(root):
     snap = {}
     for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
         rel_dir = os.path.relpath(dirpath, root)
         for name in filenames:
             full = os.path.join(dirpath, name)
             rel = name if rel_dir == "." else os.path.join(rel_dir, name)
-            if any(rel.startswith(e) for e in EXCLUDE_DIRS):
-                continue
             try:
                 st = os.lstat(full)
             except OSError:
