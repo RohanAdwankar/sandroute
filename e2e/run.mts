@@ -16,7 +16,7 @@ writeFileSync(path.join(ws, "page.html"), `<body style="margin:0;background:#fff
 const abs = (f: string) => readFileSync(path.join(root, f), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts"));
 mkdirSync(path.join(ws, ".opencode/tool"), { recursive: true });
 writeFileSync(path.join(ws, ".opencode/shared.ts"), abs("opencode/shared.ts"));
-for (const t of ["bash", "read", "write", "edit"]) writeFileSync(path.join(ws, `.opencode/tool/${t}.ts`), abs(`opencode/${t}.ts`));
+for (const t of ["bash", "read", "write", "edit", "glob", "grep"]) writeFileSync(path.join(ws, `.opencode/tool/${t}.ts`), abs(`opencode/${t}.ts`));
 // let the tool resolve @opencode-ai/plugin without a network install
 symlinkSync(path.join(root, "node_modules"), path.join(ws, "node_modules"));
 

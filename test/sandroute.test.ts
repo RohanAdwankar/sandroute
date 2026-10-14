@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Sandroute } from "../src/index.ts";
@@ -167,4 +167,19 @@ test("the file tools are held to the workspace", async () => {
   await s.writeFile(path.join(outside, "planted.txt"), "x").catch(() => {});
   assert.equal(existsSync(path.join(outside, "planted.txt")), false, "a write outside the workspace must not land on the host");
   assert.equal(readFileSync(path.join(outside, "secret.txt"), "utf8"), "not the agent's to see\n");
+});
+
+test("the search tools see the workspace and nothing outside it", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const outside = mkdtempSync(path.join(tmpdir(), "outside-"));
+  writeFileSync(path.join(outside, "secret.ts"), "needle\n");
+  mkdirSync(path.join(ws, "src"), { recursive: true });
+  writeFileSync(path.join(ws, "src/a.ts"), "needle\n");
+  writeFileSync(path.join(ws, "src/b.txt"), "needle\n");
+  const s = new Sandroute({ workspace: ws, vm: new CountingVm() });
+
+  assert.deepEqual((await s.glob("*.ts")).map((f) => f.replace(/.*\//, "")), ["a.ts"]);
+  assert.deepEqual((await s.grepFiles("needle", undefined, "*.ts")).map((f) => f.replace(/.*\//, "")), ["a.ts"]);
+  assert.deepEqual(await s.glob("*.ts", outside), [], "a path outside the workspace yields nothing");
+  assert.deepEqual(await s.grepFiles("needle", outside), [], "and cannot be searched for contents");
 });

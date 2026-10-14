@@ -139,6 +139,26 @@ export class Sandroute {
     });
   }
 
+  /** Both search tools run through the in-process shell, so they see the workspace and
+   *  nothing else, and the agent cannot enumerate the host by asking for a wider path. */
+  async glob(pattern: string, dir?: string): Promise<string[]> {
+    const r = await this.run(`find ${this.quote(dir ?? ".")} -type f -name ${this.quote(pattern)}`, dir);
+    return r.stdout.split("\n").filter(Boolean);
+  }
+
+  async grepFiles(pattern: string, dir?: string, include?: string): Promise<string[]> {
+    const where = this.quote(dir ?? ".");
+    // the in-process grep has no --include, so narrow with find first
+    const cmd = include
+      ? `find ${where} -type f -name ${this.quote(include)} -exec grep -l -e ${this.quote(pattern)} {} +`
+      : `grep -rl -e ${this.quote(pattern)} ${where}`;
+    return (await this.run(cmd, dir)).stdout.split("\n").filter(Boolean);
+  }
+
+  private quote(s: string) {
+    return `'${s.replaceAll("'", `'\\''`)}'`;
+  }
+
   private resolve(file: string) {
     return path.isAbsolute(file) ? file : path.join(this.opts.workspace, file);
   }
