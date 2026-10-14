@@ -63,6 +63,7 @@ test("firecracker config is ordered boot-source, drive, machine, vsock, then sta
   // a writable root cannot be shared by two VMs, and corrupts when a snapshot is restored
   // over a backing file a later VM has written
   assert.equal((steps[1].body as { is_read_only: boolean }).is_read_only, true);
+  assert.ok(!steps.some((s) => s.path.startsWith("/network-interfaces")), "no nic unless asked for");
 });
 
 test("the manifest never follows a symlink out of the workspace", () => {
@@ -87,4 +88,16 @@ test("the manifest skips node_modules and .git wherever they appear", () => {
   writeFileSync(path.join(ws, "node_modules_old/keep.txt"), "not a dep dir\n");
   writeFileSync(path.join(ws, "a.txt"), "mine\n");
   assert.deepEqual([...manifest(ws).keys()].sort(), ["a.txt", "node_modules_old/keep.txt"]);
+});
+
+test("a configured network reaches the guest as a nic and on the cmdline", () => {
+  const steps = buildConfig(
+    { kernel: "/k", rootfs: "/r.ext4", network: { tap: "sr-tap0", guestIp: "172.16.0.2/30", gateway: "172.16.0.1" } },
+    "v.sock", "/work",
+  );
+  assert.deepEqual(steps.map((s) => s.path),
+    ["/boot-source", "/drives/rootfs", "/machine-config", "/vsock", "/network-interfaces/eth0", "/actions"]);
+  assert.deepEqual(steps[4].body, { iface_id: "eth0", guest_mac: "06:00:ac:10:00:02", host_dev_name: "sr-tap0" });
+  const args = (steps[0].body as { boot_args: string }).boot_args;
+  assert.match(args, /sandroute\.ip=172\.16\.0\.2\/30 sandroute\.gw=172\.16\.0\.1 sandroute\.dns=1\.1\.1\.1/);
 });

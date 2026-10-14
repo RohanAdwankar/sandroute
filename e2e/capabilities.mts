@@ -1,11 +1,10 @@
-// Does the VM actually deliver what the router promises?
+// Can the guest behave like an ordinary machine?
 //
-// The router escalates a command because the in-process shell cannot serve it. That is
-// only useful if the VM can. Live agent runs showed it often cannot: a model asked to
-// build something reached for pip, apt and npm, and got "command not found" from the VM
-// instead of from the shell -- no better off, one wake worse off.
+// Not having cargo preinstalled is not a problem -- no fresh VM does, and an agent that
+// needs it installs it. What makes a missing tool terminal rather than a detour is having
+// no way to go and get it, so this checks reachability, and lists what is already present
+// only as context for how far an agent gets before it has to.
 //
-// This is a gap list, so it fails while gaps remain. Fix the image, or trim the promise.
 //   npx tsx e2e/capabilities.mts
 import { mkdirSync, rmSync } from "node:fs";
 import { ALWAYS_VM, MACHINE_QUERIES } from "../src/router.js";
@@ -37,7 +36,7 @@ const net = [
   ["outbound TCP", `python3 -c "import socket;socket.setdefaulttimeout(5);socket.create_connection(('1.1.1.1',443));print('yes')" 2>/dev/null || echo no`, (o: string) => o === "yes"],
 ] as const;
 
-console.log("\nwhat an agent needs before it can install anything\n");
+console.log("\nwhich it can only do if the guest has a network:\n");
 const netFails: string[] = [];
 for (const [label, cmd, ok] of net) {
   const got = await sh(cmd);
@@ -47,10 +46,10 @@ for (const [label, cmd, ok] of net) {
 }
 await vm.stop(); rmSync(WS, { recursive: true, force: true });
 
-console.log(`\n${missing.length} of ${names.length} escalated commands are absent from the VM: ${missing.join(" ") || "none"}`);
-console.log(`${netFails.length} of ${net.length} network prerequisites unmet`);
-if (missing.length || netFails.length) {
-  console.log("\nEach line above is a command the router promises the VM can serve and it cannot,");
-  console.log("or a reason an agent's first instinct -- install the dependency -- dies.");
+if (netFails.length) {
+  console.log(`\n${netFails.length} of ${net.length} unmet. Without these the guest is not an ordinary machine:`);
+  console.log("an agent that hits a missing tool cannot go and get it, and is simply stuck.");
+  console.log("Run scripts/net-setup.sh once as root, then pass `network` to FirecrackerVm.");
   process.exit(1);
 }
+console.log("\nThe guest can reach the network, so a missing tool is a detour, not a wall.");

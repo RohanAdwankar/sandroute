@@ -26,6 +26,25 @@ export interface FirecrackerOptions {
   /** Pipe the guest console to this process. Off by default, and the only way to see why a boot failed. */
   console?: boolean;
   /**
+   * Give the guest a network. It behaves like any other machine: it can reach the
+   * internet and install what it needs, and it cannot reach the host.
+   *
+   * Needs a tap device, which needs CAP_NET_ADMIN, so it is set up once by an operator
+   * rather than by sandroute -- see scripts/net-setup.sh. Left unset, the guest has
+   * loopback only and an agent that reaches for a package manager is stuck.
+   */
+  network?: {
+    /** Host tap device, e.g. "sr-tap0". */
+    tap: string;
+    /** Guest address with prefix, e.g. "172.16.0.2/30". */
+    guestIp: string;
+    /** The host end of the tap, e.g. "172.16.0.1". */
+    gateway: string;
+    /** Resolver the guest should use. Defaults to 1.1.1.1. */
+    dns?: string;
+    mac?: string;
+  };
+  /**
    * Keep a booted-and-ready snapshot here and restore from it instead of cold booting.
    * The first boot for a workspace primes it; every boot after that is a restore, which
    * is what makes releasing the VM mid-turn cheap enough to be worth doing.
@@ -39,8 +58,12 @@ export interface FirecrackerOptions {
 /** The ordered Firecracker API calls that configure and start a VM. Pure, so it can be tested without KVM. */
 export function buildConfig(o: FirecrackerOptions, vsockPath: string, workspace: string): { path: string; body: unknown }[] {
   const port = o.agentPort ?? 5000;
-  return [
-    { path: "/boot-source", body: { kernel_image_path: o.kernel, boot_args: `console=ttyS0 reboot=k panic=1 pci=off sandroute.workspace=${workspace} sandroute.port=${port} ${o.bootArgs ?? ""}`.trim() } },
+  const net = o.network;
+  const netArgs = net
+    ? ` sandroute.ip=${net.guestIp} sandroute.gw=${net.gateway} sandroute.dns=${net.dns ?? "1.1.1.1"}`
+    : "";
+  const steps: { path: string; body: unknown }[] = [
+    { path: "/boot-source", body: { kernel_image_path: o.kernel, boot_args: `console=ttyS0 reboot=k panic=1 pci=off sandroute.workspace=${workspace} sandroute.port=${port}${netArgs} ${o.bootArgs ?? ""}`.trim() } },
     // Read-only, for two reasons. A writable root means one image cannot back two VMs at
     // once, and restoring a snapshot over a backing file that a later VM has since written
     // corrupts the filesystem: the restored guest's cached ext4 metadata no longer matches
@@ -49,8 +72,12 @@ export function buildConfig(o: FirecrackerOptions, vsockPath: string, workspace:
     { path: "/drives/rootfs", body: { drive_id: "rootfs", path_on_host: o.rootfs, is_root_device: true, is_read_only: true } },
     { path: "/machine-config", body: { vcpu_count: o.vcpus ?? 2, mem_size_mib: o.memMiB ?? 1024 } },
     { path: "/vsock", body: { guest_cid: 3, uds_path: vsockPath } },
-    { path: "/actions", body: { action_type: "InstanceStart" } },
   ];
+  if (net) {
+    steps.push({ path: "/network-interfaces/eth0", body: { iface_id: "eth0", guest_mac: net.mac ?? "06:00:ac:10:00:02", host_dev_name: net.tap } });
+  }
+  steps.push({ path: "/actions", body: { action_type: "InstanceStart" } });
+  return steps;
 }
 
 function get(sock: string, p: string): Promise<void> {

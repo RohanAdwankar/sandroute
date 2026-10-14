@@ -69,16 +69,16 @@ Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KE
 - Booted for real on a host with KVM, against kernel 6.1.128 from Firecracker's CI bucket and a hand-built ext4 rootfs: cold boot to agent ready 773ms, snapshot restore 11ms, later VM commands ~10ms, and the sync moved files both ways. Firecracker appends `root=/dev/vda rw` itself, so the default boot args need nothing added.
 - There is no per-command latency to win by staying out of the VM. `bash -c` in the guest measured 1.24ms against 1.16ms on the host, and the in-process tier is 1.2-2.5ms. The win is VM-allocated seconds, not latency.
 - A snapshot is tied to one workspace path, because the guest agent's root arrives on the kernel command line and is baked into guest memory.
-- **The escalation promise is mostly empty.** `npx tsx e2e/capabilities.mts` boots the VM and
-  checks it against the router's own lists: 43 of the 56 commands the router sends to the VM
-  do not exist there, including `npm`, `node`, `pip`, `gcc`, `cargo`, `curl` and every browser.
-  The agent gets "command not found" from the VM instead of from the in-process shell, one
-  wake worse off. Either the image has to carry them or the router should stop claiming it.
-- **The guest has no network at all.** `buildConfig` issues boot-source, drives, machine-config,
-  vsock and actions -- there is no `/network-interfaces`, so the VM has only loopback: no NIC,
-  no route, no `/etc/resolv.conf`, no DNS. An agent's first instinct on a missing dependency is
-  to install it, and every form of that dies here. Closing this needs a tap device and NAT on
-  the host, which needs privileges sandroute does not currently ask for.
+- The guest is meant to behave like any other machine that happens to be isolated from the
+  host: it reaches the internet, installs what it needs, and cannot reach the host. Pass
+  `network` to `FirecrackerVm` after running `scripts/net-setup.sh` once as root -- a tap
+  device needs CAP_NET_ADMIN, so sandroute cannot create one for itself. Without it the guest
+  has loopback only, and an agent that hits a missing tool has no way to go and get it.
+  `npx tsx e2e/capabilities.mts` reports which of the two it is.
+- The networked path is written but **unverified end to end**: the machine it was built on
+  has no root and restricts unprivileged user namespaces, so no tap could be created to test
+  against. What is covered is the config sandroute sends and the guest-side setup; what is not
+  is a packet actually leaving.
 - The rootfs image is not built by this repo yet.
 - `FirecrackerVm` spawns firecracker with `stdio: "ignore"`, so there is no way to see the guest console when a boot goes wrong.
 - Sync compares mtime and size and sends whole files, so a large workspace is slow to push, and spin-down makes that a recurring cost: a VM-tier no-op is 1.7ms at 10 files, 9.4ms at 500 and 48.6ms at 3000. Sharing the workspace into the guest with virtio-fs would remove it and leave the wake at the 11ms restore.
