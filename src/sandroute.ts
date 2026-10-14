@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import path from "node:path";
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs, getCommandNames } from "just-bash";
 import { gitCommand } from "./git.js";
 import { HostProcessVm } from "./host-vm.js";
@@ -99,6 +100,66 @@ export class Sandroute {
     if (this.opts.logFile)
       appendFileSync(this.opts.logFile, JSON.stringify({ t: new Date().toISOString(), command, tier: out.tier, reason: out.reason, booted, bootMs, ms: out.ms, exitCode: out.exitCode, vmAllocatedMs: this.vmAllocatedMs }) + "\n");
     return out;
+  }
+
+  /**
+   * The file tools, served by the same filesystem the in-process shell uses. A harness
+   * that writes and reads through its own tools would otherwise touch the host directly,
+   * with nothing holding it to the workspace; going through MountableFs means a path
+   * outside the workspace lands in the empty InMemoryFs, and symlinks out are refused,
+   * exactly as they are for a command.
+   */
+  async readFile(file: string, opts: { offset?: number; limit?: number } = {}): Promise<string> {
+    return this.fileOp("read", file, async () => {
+      const text = await this.bash.fs.readFile(this.resolve(file), "utf8");
+      if (opts.offset === undefined && opts.limit === undefined) return text;
+      const from = Math.max(0, (opts.offset ?? 1) - 1);
+      return text.split("\n").slice(from, from + (opts.limit ?? 2000)).join("\n");
+    });
+  }
+
+  async writeFile(file: string, content: string): Promise<void> {
+    await this.fileOp("write", file, async () => {
+      const full = this.resolve(file);
+      const dir = path.dirname(full);
+      if (dir && dir !== full) await this.bash.fs.mkdir(dir, { recursive: true });
+      await this.bash.fs.writeFile(full, content);
+    });
+  }
+
+  async editFile(file: string, oldString: string, newString: string, replaceAll = false): Promise<number> {
+    return this.fileOp("edit", file, async () => {
+      const full = this.resolve(file);
+      const before = await this.bash.fs.readFile(full, "utf8");
+      const hits = before.split(oldString).length - 1;
+      if (hits === 0) throw new Error(`oldString not found in ${file}`);
+      if (hits > 1 && !replaceAll) throw new Error(`oldString appears ${hits} times in ${file}; pass replaceAll`);
+      await this.bash.fs.writeFile(full, replaceAll ? before.split(oldString).join(newString) : before.replace(oldString, newString));
+      return replaceAll ? hits : 1;
+    });
+  }
+
+  private resolve(file: string) {
+    return path.isAbsolute(file) ? file : path.join(this.opts.workspace, file);
+  }
+
+  /** File tools are in-process by definition, but they are still agent activity and belong in the log. */
+  private async fileOp<T>(op: string, file: string, run: () => Promise<T>): Promise<T> {
+    const t0 = Date.now();
+    let failed: string | undefined;
+    try {
+      return await run();
+    } catch (e) {
+      failed = (e as Error).message;
+      throw e;
+    } finally {
+      if (this.opts.logFile)
+        appendFileSync(this.opts.logFile, JSON.stringify({
+          t: new Date().toISOString(), command: `${op} ${file}`, tier: "inprocess",
+          reason: "file tool, served by the workspace filesystem", booted: false, bootMs: 0,
+          ms: Date.now() - t0, exitCode: failed ? 1 : 0, vmAllocatedMs: this.vmAllocatedMs,
+        }) + "\n");
+    }
   }
 
   private armIdle() {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Sandroute } from "../src/index.ts";
@@ -144,4 +144,27 @@ test("a backend with no busy probe still releases on the timer", async () => {
   await settle(200);
   assert.equal(vm.stops, 1);
   await s.stop();
+});
+
+test("the file tools are held to the workspace", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const outside = mkdtempSync(path.join(tmpdir(), "outside-"));
+  writeFileSync(path.join(outside, "secret.txt"), "not the agent's to see\n");
+  const s = new Sandroute({ workspace: ws, vm: new CountingVm() });
+
+  await s.writeFile("notes/todo.md", "- one\n");
+  assert.equal(readFileSync(path.join(ws, "notes/todo.md"), "utf8"), "- one\n");
+  assert.equal(await s.readFile("notes/todo.md"), "- one\n");
+
+  await s.editFile("notes/todo.md", "one", "two");
+  assert.equal(readFileSync(path.join(ws, "notes/todo.md"), "utf8"), "- two\n");
+
+  // a path outside the workspace resolves into the empty in-memory fs, not the host
+  await assert.rejects(() => s.readFile(path.join(outside, "secret.txt")));
+  await assert.rejects(() => s.readFile("/etc/passwd"));
+
+  // and writing outside must not reach the host either
+  await s.writeFile(path.join(outside, "planted.txt"), "x").catch(() => {});
+  assert.equal(existsSync(path.join(outside, "planted.txt")), false, "a write outside the workspace must not land on the host");
+  assert.equal(readFileSync(path.join(outside, "secret.txt"), "utf8"), "not the agent's to see\n");
 });

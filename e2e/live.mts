@@ -13,8 +13,12 @@ const log = path.join(ws, "sandroute.log");
 
 writeFileSync(path.join(ws, "notes.txt"), "the quick brown fox\n");
 writeFileSync(path.join(ws, "page.html"), `<body style="margin:0"><div style="height:600px;background:linear-gradient(90deg,#2b6,#26b);color:#fff;font:48px sans-serif;padding:40px">sandroute</div></body>`);
+// Install the tool overrides: the shared module sits outside tool/, because opencode
+// registers every file in tool/ as a tool.
+const abs = (f: string) => readFileSync(path.join(root, f), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts"));
 mkdirSync(path.join(ws, ".opencode/tool"), { recursive: true });
-writeFileSync(path.join(ws, ".opencode/tool/bash.ts"), readFileSync(path.join(root, "opencode/bash.ts"), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts")));
+writeFileSync(path.join(ws, ".opencode/shared.ts"), abs("opencode/shared.ts"));
+for (const t of ["bash", "read", "write", "edit"]) writeFileSync(path.join(ws, `.opencode/tool/${t}.ts`), abs(`opencode/${t}.ts`));
 symlinkSync(path.join(root, "node_modules"), path.join(ws, "node_modules"));
 writeFileSync(path.join(ws, "opencode.json"), JSON.stringify({ $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }));
 

@@ -46,7 +46,17 @@ of a session rather than on a user's first heavy command:
 
 ## Use with opencode
 
-Copy `opencode/bash.ts` to `<project>/.opencode/tool/bash.ts`. It has the same name as the built-in, so it overrides it. Opencode itself is unmodified.
+Copy `opencode/shared.ts` to `<project>/.opencode/shared.ts`, and `bash.ts`, `read.ts`,
+`write.ts` and `edit.ts` to `<project>/.opencode/tool/`. Each has the same name as a
+built-in, so it overrides it; the shared module sits outside `tool/` because opencode
+registers everything in there as a tool. Opencode itself is unmodified.
+
+The file tools matter as much as bash. Left alone they write straight to the host with
+nothing holding them to the workspace, and a live agent reaches for them constantly --
+in two recorded runs the agent created its main source file with `write`, so the sandbox
+never saw it. Routed here they go through the same filesystem the in-process shell uses,
+so a path outside the workspace resolves into an empty in-memory filesystem instead of
+the host, and symlinks out are refused.
 
 ## Test
 

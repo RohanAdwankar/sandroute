@@ -36,10 +36,13 @@ writeFileSync(path.join(ws, "README.md"), "# scratch\n\nnothing here yet\n");
 writeFileSync(path.join(ws, "AGENTS.md"),
   "# notes for agents\n\n" +
   "- Python 3 standard library only. The sandbox has no network, so nothing can be installed.\n" +
-  "- Use the bash tool for everything, one command per step.\n");
+  "- One command per step.\n");
+// Install the tool overrides: the shared module sits outside tool/, because opencode
+// registers every file in tool/ as a tool.
+const abs = (f: string) => readFileSync(path.join(root, f), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts"));
 mkdirSync(path.join(ws, ".opencode/tool"), { recursive: true });
-writeFileSync(path.join(ws, ".opencode/tool/bash.ts"),
-  readFileSync(path.join(root, "opencode/bash.ts"), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts")));
+writeFileSync(path.join(ws, ".opencode/shared.ts"), abs("opencode/shared.ts"));
+for (const t of ["bash", "read", "write", "edit"]) writeFileSync(path.join(ws, `.opencode/tool/${t}.ts`), abs(`opencode/${t}.ts`));
 symlinkSync(path.join(root, "node_modules"), path.join(ws, "node_modules"));
 
 const APP = `import json, os, sys
@@ -78,10 +81,7 @@ elif cmd == "list":
 elif cmd == "serve":
     serve(int(sys.argv[2]))`;
 
-// Only the bash tool is routed through sandroute -- opencode's own write/read/edit tools
-// touch the host directly -- so the prompt asks for bash. That is a real limit of the
-// current design, not a stage direction.
-const PROMPT = "make me a little todo app in todo.py, put a couple of things in it, then serve it on port 8099. use the bash tool for everything, one command per step.";
+const PROMPT = "make me a little todo app in todo.py, put a couple of things in it, then serve it on port 8099.";
 const MODEL = process.env.DEMO_MODEL ?? "opencode/big-pickle";
 writeFileSync(path.join(ws, "opencode.json"), JSON.stringify(
   { $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }, null, 2));
