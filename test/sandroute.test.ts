@@ -10,8 +10,9 @@ class CountingVm implements VmBackend {
   name = "counting";
   boots = 0;
   stops = 0;
+  execs = 0;
   async boot() { this.boots++; }
-  async exec() { return { stdout: "vm\n", stderr: "", exitCode: 0 }; }
+  async exec() { this.execs++; return { stdout: "vm\n", stderr: "", exitCode: 0 }; }
   async stop() { this.stops++; }
 }
 
@@ -176,10 +177,16 @@ test("the search tools see the workspace and nothing outside it", async () => {
   mkdirSync(path.join(ws, "src"), { recursive: true });
   writeFileSync(path.join(ws, "src/a.ts"), "needle\n");
   writeFileSync(path.join(ws, "src/b.txt"), "needle\n");
-  const s = new Sandroute({ workspace: ws, vm: new CountingVm() });
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm });
 
   assert.deepEqual((await s.glob("*.ts")).map((f) => f.replace(/.*\//, "")), ["a.ts"]);
   assert.deepEqual((await s.grepFiles("needle", undefined, "*.ts")).map((f) => f.replace(/.*\//, "")), ["a.ts"]);
-  assert.deepEqual(await s.glob("*.ts", outside), [], "a path outside the workspace yields nothing");
-  assert.deepEqual(await s.grepFiles("needle", outside), [], "and cannot be searched for contents");
+  assert.equal(vm.execs, 0, "searching the workspace never leaves the process");
+
+  // outside the workspace the in-process shell must not answer: it is escalated, and what
+  // the VM can see is the VM's business
+  await s.glob("*.ts", outside);
+  await s.grepFiles("needle", outside);
+  assert.equal(vm.execs, 2, "a path outside the workspace is escalated, not served here");
 });
