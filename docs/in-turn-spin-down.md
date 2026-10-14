@@ -257,8 +257,10 @@ that doesn't change when you make the turn longer.
 
 ## What's left
 
-The thing I'd build next is virtio-fs, because it collapses the only recurring cost in the
-design and makes a 100ms idle window reasonable. After that, the interesting question is
+The thing I'd build next is snapshotting after the workspace is loaded rather than
+pristine, so a wake pushes only what changed since. It is the only recurring cost in the
+design, and Firecracker offers no shared filesystem to make it go away outright. After
+that, the interesting question is
 whether the idle window should be a constant at all, or predicted — an agent that just ran
 `npm test` is probably about to run it again, and an agent that just read six files is
 probably going to read six more.
