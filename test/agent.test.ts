@@ -101,3 +101,15 @@ test("a configured network reaches the guest as a nic and on the cmdline", () =>
   const args = (steps[0].body as { boot_args: string }).boot_args;
   assert.match(args, /sandroute\.ip=172\.16\.0\.2\/30 sandroute\.gw=172\.16\.0\.1 sandroute\.dns=1\.1\.1\.1/);
 });
+
+test("a guest that dies mid-request does not leave the caller waiting", async () => {
+  const { guest, client, done } = await rig();
+  try {
+    const slow = client.exec("sleep 30", guest);
+    await new Promise((r) => setTimeout(r, 200));
+    done(); // the guest goes away while the command is still running
+    await assert.rejects(slow, /closed/);
+    // and anything asked afterwards fails rather than hanging
+    await assert.rejects(client.exec("true", guest), /closed/);
+  } finally { done(); }
+});

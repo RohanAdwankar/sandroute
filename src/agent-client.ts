@@ -46,7 +46,8 @@ export function manifest(root: string): Manifest {
 export class AgentClient {
   private sock!: net.Socket;
   private rl!: readline.Interface;
-  private pending: ((line: string) => void)[] = [];
+  private pending: { resolve(line: string): void; reject(e: Error): void }[] = [];
+  private dead?: Error;
   /** What the guest is known to hold. */
   private synced: Manifest = new Map();
 
@@ -55,15 +56,30 @@ export class AgentClient {
   async open() {
     this.sock = await this.connect();
     this.rl = readline.createInterface({ input: this.sock });
-    this.rl.on("line", (l) => this.pending.shift()?.(l));
+    this.rl.on("line", (l) => this.pending.shift()?.resolve(l));
+    // A guest that dies owes an answer to everything already asked. Without this the
+    // caller waits on a reply that is never coming, which hangs the agent outright.
+    this.sock.on("error", (e) => this.fail(e));
+    this.sock.on("close", () => this.fail(new Error("guest agent connection closed")));
     await this.request({ op: "ping" });
   }
 
+  private fail(e: Error) {
+    this.dead ??= e;
+    const owed = this.pending;
+    this.pending = [];
+    for (const p of owed) p.reject(e);
+  }
+
   private request(obj: unknown): Promise<any> {
+    if (this.dead) return Promise.reject(this.dead);
     return new Promise((resolve, reject) => {
-      this.pending.push((l) => {
-        const r = JSON.parse(l);
-        r.error ? reject(new Error(r.error)) : resolve(r);
+      this.pending.push({
+        resolve: (l) => {
+          const r = JSON.parse(l);
+          r.error ? reject(new Error(r.error)) : resolve(r);
+        },
+        reject,
       });
       this.sock.write(JSON.stringify(obj) + "\n");
     });
@@ -106,6 +122,7 @@ export class AgentClient {
   }
 
   close() {
+    this.fail(new Error("agent client closed"));
     this.rl?.close();
     this.sock?.destroy();
   }
