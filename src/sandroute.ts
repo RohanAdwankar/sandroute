@@ -43,6 +43,8 @@ export class Sandroute {
   private idleTimer?: NodeJS.Timeout;
   /** What was still running the last time a release was refused. */
   lastPinned: { pid: number; comm: string }[] = [];
+  /** Paths the guest kept its own version of because both sides had changed them. */
+  conflicts: string[] = [];
   /** Wall time the VM has been allocated, which is what a microVM actually costs. */
   private allocMs = 0;
   private allocSince?: number;
@@ -58,6 +60,11 @@ export class Sandroute {
       mounts: [{ mountPoint: opts.workspace, filesystem: new ReadWriteFs({ root: opts.workspace }) }],
     });
     this.bash = new Bash({ fs, cwd: opts.workspace, customCommands: [gitCommand], network: { dangerouslyAllowFullInternetAccess: true } });
+    this.vm.onConflict = (paths) => {
+      this.conflicts.push(...paths);
+      if (this.opts.logFile)
+        appendFileSync(this.opts.logFile, JSON.stringify({ t: new Date().toISOString(), conflicts: paths }) + "\n");
+    };
     this.known = new Set([...getCommandNames(), "curl", "git"]);
   }
 

@@ -62,6 +62,9 @@ export class AgentClient {
    *  that is not a slow sync, it is a dead one: node cannot hold a string over ~512MB. */
   constructor(private connect: () => Promise<net.Socket>, private workspace: string, private maxFileBytes = 64 * 1024 * 1024) {}
 
+  /** Called with paths the guest kept its own version of. */
+  onConflict?: (paths: string[]) => void;
+
   async open() {
     this.sock = await this.connect();
     this.rl = readline.createInterface({ input: this.sock });
@@ -113,13 +116,23 @@ export class AgentClient {
     const del = [...this.synced.files.keys()].filter((r) => !now.files.has(r));
     // directories carry no files, so nothing else would ever create them in the guest
     const dirs = [...now.dirs].filter((d) => !this.synced.dirs.has(d));
-    if (files.length || del.length || dirs.length) await this.request({ op: "sync", files, delete: del, dirs });
     this.synced = now;
+    if (!files.length && !del.length && !dirs.length) return;
+    const r = await this.request({ op: "sync", files, delete: del, dirs });
+    // The guest refuses a file it has moved on from itself. Its version arrives with the
+    // next report, so the host converges on it rather than overwriting it.
+    if (r.conflicts?.length) this.onConflict?.(r.conflicts);
   }
 
   async exec(cmd: string, cwd: string, env?: Record<string, string>): Promise<ExecResponse> {
     await this.pushChanges();
     const r: ExecResponse = await this.request({ op: "exec", cmd, cwd, env });
+    this.apply(r);
+    return r;
+  }
+
+  /** Take whatever the guest reports and make the host match it. */
+  private apply(r: { changed: FileMsg[]; deleted: string[]; dirs?: string[] }) {
     for (const rel of r.deleted) rmSync(path.join(this.workspace, rel), { force: true });
     for (const rel of r.dirs ?? []) mkdirSync(path.join(this.workspace, rel), { recursive: true });
     for (const f of r.changed) {
@@ -130,12 +143,13 @@ export class AgentClient {
     }
     // what we just wrote is now identical on both sides
     this.synced = manifest(this.workspace);
-    return r;
   }
 
-  /** No workspace sync: this asks about the machine, not about files. */
-  busy(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }> {
-    return this.request({ op: "busy" });
+  /** Asks what is still running, and collects what it has written while it ran. */
+  async busy(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }> {
+    const r = await this.request({ op: "busy" });
+    this.apply(r);
+    return r;
   }
 
   close() {

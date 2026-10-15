@@ -20,5 +20,11 @@ export interface VmBackend {
    * the VM is released on the idle timer alone.
    */
   busy?(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }>;
+  /**
+   * Set by the caller. Reports paths the machine kept its own version of because both
+   * sides had changed them since the last exchange; the machine's version wins, and the
+   * workspace converges on it.
+   */
+  onConflict?: (paths: string[]) => void;
   stop(): Promise<void>;
 }

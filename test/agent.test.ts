@@ -180,3 +180,35 @@ test("what a background process writes comes back on the next command", async ()
       "the host must not keep a version the guest has moved past");
   } finally { done(); }
 });
+
+test("a file both sides changed keeps the guest's version, and says so", async () => {
+  const { host, guest, client, done } = await rig();
+  try {
+    const f = "shared.txt";
+    writeFileSync(path.join(host, f), "original\n");
+    await client.exec("true", guest);
+
+    const seen: string[][] = [];
+    client.onConflict = (p) => seen.push(p);
+    // the guest moves it on out of band, the host edits the version it still believes in
+    writeFileSync(path.join(guest, f), "from the guest\n");
+    writeFileSync(path.join(host, f), "from the host\n");
+
+    await client.exec("true", guest);
+    assert.deepEqual(seen, [[f]], "the host must be told its write did not land");
+    assert.equal(readFileSync(path.join(guest, f), "utf8"), "from the guest\n", "the guest keeps its own");
+    assert.equal(readFileSync(path.join(host, f), "utf8"), "from the guest\n", "and the host converges on it");
+  } finally { done(); }
+});
+
+test("a pinned vm hands over what it has written while it runs", async () => {
+  const { host, guest, client, done } = await rig();
+  try {
+    await client.exec(`nohup sh -c 'sleep 0.3; echo served > late.txt; sleep 5' >/dev/null 2>&1 &`, guest);
+    await new Promise((r) => setTimeout(r, 600));
+    const b = await client.busy();                 // the idle timer's probe, nothing else
+    assert.equal(b.busy, true, "something is still running in there");
+    assert.equal(readFileSync(path.join(host, "late.txt"), "utf8"), "served\n",
+      "the probe collects what it wrote, without any command being run");
+  } finally { done(); }
+});

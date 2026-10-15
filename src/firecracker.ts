@@ -254,6 +254,7 @@ export class FirecrackerVm implements VmBackend {
 
   private async openClient() {
     this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
+    this.client.onConflict = (p) => this.onConflict?.(p);
     await this.client.open();
   }
 
@@ -265,6 +266,8 @@ export class FirecrackerVm implements VmBackend {
   busy() {
     return this.client!.busy();
   }
+
+  onConflict?: (paths: string[]) => void;
 
   async stop(): Promise<void> {
     this.client?.close();

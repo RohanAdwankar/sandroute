@@ -5,7 +5,9 @@ Protocol: one JSON object per line in each direction.
   {"op":"ping"}                                   -> {"ok":true}
   {"op":"sync","files":[{path,mode,b64}],"delete":[path],"dirs":[path]}  -> {"ok":true}
   {"op":"exec","cmd":str,"cwd":str,"env":{}}      -> {"stdout","stderr","code","changed":[{path,mode,b64}],"deleted":[path]}
-  {"op":"busy"}                                   -> {"busy":bool,"procs":[{pid,comm}]}
+  {"op":"busy"}                                   -> {"busy":bool,"procs":[...],changed,deleted,dirs}
+Every reply that can carry files reports what differs from the host's copy, whenever it
+changed, so work by a process the agent left running is not lost between commands.
 Paths are relative to the workspace root. The workspace lives at the same absolute path in the guest as on the host.
 """
 import argparse, base64, json, os, socket, subprocess, sys
@@ -105,15 +107,36 @@ def live_processes():
     return out
 
 
+def drift(root):
+    """Everything that differs from what the host holds, and reset the mark.
+
+    This is the only report the host gets, so it has to cover changes made at any time,
+    not only during a command: a cron or a dev server writes between commands.
+    """
+    global SYNCED
+    before, before_dirs = SYNCED
+    after, after_dirs = snapshot(root)
+    SYNCED = (after, after_dirs)
+    return {
+        "changed": [read_file(root, r) for r, v in after.items() if before.get(r) != v],
+        "deleted": [r for r in before if r not in after],
+        "dirs": sorted(after_dirs - before_dirs),
+    }
+
+
 def handle(root, req):
     op = req.get("op")
     if op == "ping":
         return {"ok": True}
     if op == "busy":
         procs = live_processes()
-        return {"busy": bool(procs), "procs": procs}
+        # whatever is still running has been writing; hand that over while reporting it,
+        # so a pinned VM does not drift further from the host the longer it runs
+        return dict(drift(root), busy=bool(procs), procs=procs)
     global SYNCED
     if op == "sync":
+        held, _ = SYNCED
+        conflicts = []
         for rel in req.get("delete", []):
             try:
                 os.remove(safe(root, rel))
@@ -122,31 +145,35 @@ def handle(root, req):
         for rel in req.get("dirs", []):
             os.makedirs(safe(root, rel), exist_ok=True)
         for f in req.get("files", []):
-            full = safe(root, f["path"])
+            rel = f["path"]
+            full = safe(root, rel)
+            # the guest moved this on too, so the host's copy is not an update but a
+            # competing version. The side with something running wins, and says so.
+            if os.path.isfile(full):
+                st = os.lstat(full)
+                if held.get(rel) != (st.st_mtime_ns, st.st_size):
+                    conflicts.append(rel)
+                    continue
             os.makedirs(os.path.dirname(full), exist_ok=True)
             with open(full, "wb") as out:
                 out.write(base64.b64decode(f["b64"]))
             os.chmod(full, f.get("mode", 0o644))
-        SYNCED = snapshot(root)
-        return {"ok": True}
+        held_now, dirs_now = snapshot(root)
+        # A file we refused still differs from what the host has, so it must stay marked
+        # as ours to report -- otherwise the refusal is silent and the two never converge.
+        for rel in conflicts:
+            held_now.pop(rel, None)
+        SYNCED = (held_now, dirs_now)
+        return {"ok": True, "conflicts": conflicts}
     if op == "exec":
-        before, before_dirs = SYNCED
         env = dict(os.environ)
         env.update(req.get("env") or {})
         cwd = req.get("cwd") or root
         p = subprocess.run(["bash", "-c", req["cmd"]], cwd=cwd, env=env, capture_output=True)
-        after, after_dirs = snapshot(root)
-        SYNCED = (after, after_dirs)
-        changed = [read_file(root, r) for r, v in after.items() if before.get(r) != v]
-        deleted = [r for r in before if r not in after]
-        return {
-            "stdout": p.stdout.decode("utf-8", "replace"),
-            "stderr": p.stderr.decode("utf-8", "replace"),
-            "code": p.returncode,
-            "changed": changed,
-            "deleted": deleted,
-            "dirs": sorted(after_dirs - before_dirs),
-        }
+        return dict(drift(root),
+                    stdout=p.stdout.decode("utf-8", "replace"),
+                    stderr=p.stderr.decode("utf-8", "replace"),
+                    code=p.returncode)
     return {"error": "unknown op " + str(op)}
 
 
