@@ -12,6 +12,12 @@ import argparse, base64, json, os, socket, subprocess, sys
 
 EXCLUDE_DIRS = {"node_modules", ".git"}  # must match SKIP in agent-client.ts
 
+# What the host is known to hold. Diffing a command against this rather than against the
+# workspace as it stood when the command started is what makes writes by anything the
+# agent left running -- a cron, a dev server, a build watcher -- visible at all: those
+# land between commands, so a before/after pair taken around one command cannot see them.
+SYNCED = ({}, set())
+
 
 def snapshot(root):
     """Files by signature, plus every directory: a directory holding no files is invisible
@@ -106,6 +112,7 @@ def handle(root, req):
     if op == "busy":
         procs = live_processes()
         return {"busy": bool(procs), "procs": procs}
+    global SYNCED
     if op == "sync":
         for rel in req.get("delete", []):
             try:
@@ -120,14 +127,16 @@ def handle(root, req):
             with open(full, "wb") as out:
                 out.write(base64.b64decode(f["b64"]))
             os.chmod(full, f.get("mode", 0o644))
+        SYNCED = snapshot(root)
         return {"ok": True}
     if op == "exec":
-        before, before_dirs = snapshot(root)
+        before, before_dirs = SYNCED
         env = dict(os.environ)
         env.update(req.get("env") or {})
         cwd = req.get("cwd") or root
         p = subprocess.run(["bash", "-c", req["cmd"]], cwd=cwd, env=env, capture_output=True)
         after, after_dirs = snapshot(root)
+        SYNCED = (after, after_dirs)
         changed = [read_file(root, r) for r, v in after.items() if before.get(r) != v]
         deleted = [r for r in before if r not in after]
         return {

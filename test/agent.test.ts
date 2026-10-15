@@ -165,3 +165,18 @@ test("a file too large to copy fails by name instead of dying inside the sync", 
     await assert.rejects(client.exec("true", guest), /fixture\.bin is 0MiB, over the 0MiB sync limit/);
   } finally { done(); }
 });
+
+test("what a background process writes comes back on the next command", async () => {
+  const { host, guest, client, done } = await rig();
+  try {
+    writeFileSync(path.join(host, "config.txt"), "from host\n");
+    await client.exec("true", guest);
+    // whatever the agent leaves running writes between commands, not during one
+    await client.exec(`nohup sh -c 'echo line >> out.log; echo from-the-job > config.txt' >/dev/null 2>&1 &`, guest);
+    await new Promise((r) => setTimeout(r, 400));
+    await client.exec("true", guest);
+    assert.equal(readFileSync(path.join(host, "out.log"), "utf8"), "line\n");
+    assert.equal(readFileSync(path.join(host, "config.txt"), "utf8"), "from-the-job\n",
+      "the host must not keep a version the guest has moved past");
+  } finally { done(); }
+});
