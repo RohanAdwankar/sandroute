@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentClient } from "./agent-client.js";
@@ -129,6 +129,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const VSOCK_REL = "v.sock";
 
+/**
+ * Where the ready-to-restore snapshot for a workspace lives, or undefined if snapshots
+ * are off. Keyed by the workspace path, because the guest agent's root is baked into
+ * guest memory, and by the kernel and rootfs, because the memory in a snapshot refers to
+ * the image it was taken from -- restoring over a rebuilt image gives a guest whose
+ * memory describes files that are no longer there.
+ */
+export function snapshotPaths(o: FirecrackerOptions, workspace: string): { state: string; mem: string } | undefined {
+  if (!o.snapshotDir) return undefined;
+  const h = createHash("sha256").update(path.resolve(workspace));
+  for (const f of [o.kernel, o.rootfs]) {
+    const st = statSync(f, { throwIfNoEntry: false });
+    h.update(`${f}:${st ? `${st.size}:${Math.floor(st.mtimeMs)}` : "missing"}`);
+  }
+  if (o.network) h.update(`net:${o.network.guestIp}:${o.network.gateway}`);
+  const key = h.digest("hex").slice(0, 16);
+  mkdirSync(o.snapshotDir, { recursive: true });
+  return { state: path.join(o.snapshotDir, `${key}.state`), mem: path.join(o.snapshotDir, `${key}.mem`) };
+}
+
 async function waitApi(sock: string, readOnly = false) {
   for (let i = 0; i < 200; i++) {
     try {
@@ -168,11 +188,7 @@ export class FirecrackerVm implements VmBackend {
   }
 
   private snapPaths(workspace: string) {
-    if (!this.o.snapshotDir) return undefined;
-    // one snapshot per workspace path: the guest agent's root is baked into guest memory
-    const key = createHash("sha256").update(path.resolve(workspace)).digest("hex").slice(0, 16);
-    mkdirSync(this.o.snapshotDir, { recursive: true });
-    return { state: path.join(this.o.snapshotDir, `${key}.state`), mem: path.join(this.o.snapshotDir, `${key}.mem`) };
+    return snapshotPaths(this.o, workspace);
   }
 
   /** firecracker binds the vsock socket relative to its cwd, so a relative uds_path in the

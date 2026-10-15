@@ -6,7 +6,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentClient } from "../src/agent-client.ts";
-import { buildConfig } from "../src/firecracker.ts";
+import { buildConfig, snapshotPaths } from "../src/firecracker.ts";
 import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
@@ -139,4 +139,21 @@ test("a same-size rewrite the signature cannot distinguish is still seen", async
     utimesSync(f, stamp, stamp);
     assert.equal((await client.exec("cat f.txt", guest)).stdout, "bbbb");
   } finally { done(); }
+});
+
+test("a snapshot is not reused across workspaces or across rebuilt images", () => {
+  const d = mkdtempSync(path.join(tmpdir(), "snapkey-"));
+  const kernel = path.join(d, "vmlinux"), rootfs = path.join(d, "rootfs.ext4");
+  writeFileSync(kernel, "k");
+  writeFileSync(rootfs, "image one");
+  const key = (ws: string) => snapshotPaths({ kernel, rootfs, snapshotDir: path.join(d, "snaps") }, ws)!.state;
+
+  const first = key("/work/one");
+  assert.equal(first, key("/work/one"), "the same inputs name the same snapshot");
+  assert.notEqual(first, key("/work/two"), "a different workspace gets its own");
+
+  writeFileSync(rootfs, "image two, rebuilt and a different length");
+  assert.notEqual(first, key("/work/one"), "a rebuilt image must not restore a snapshot of the old one");
+
+  assert.equal(snapshotPaths({ kernel, rootfs }, "/work/one"), undefined, "no snapshot dir, no snapshot");
 });
