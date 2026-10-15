@@ -71,6 +71,9 @@ The e2e run uses a scripted OpenAI-compatible server in place of a real model, s
 
 `FirecrackerVm` starts a Firecracker microVM, talks to a guest agent (`guest/agent.py`) over vsock, and keeps the workspace in step: before each VM command it pushes files that changed on the host, and after it pulls files the command changed. The workspace sits at the same absolute path in the guest.
 
+The rootfs init must mount `devpts` at `/dev/pts`. Without it nothing in the guest can
+open a terminal -- `pty.fork()` fails outright -- so no interactive program works there.
+
 Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KERNEL` (vmlinux) and `SANDROUTE_FC_ROOTFS` (ext4 with bash, python3 and the agent started at boot with `--vsock-port 5000 --workspace <path from the sandroute.workspace kernel arg>`). Also `SANDROUTE_FC_SNAPSHOT_DIR` to restore from a snapshot instead of cold booting, `SANDROUTE_IDLE_MS` to release the VM when idle, and `SANDROUTE_FC_CONSOLE` to see the guest console.
 
 ## Status
