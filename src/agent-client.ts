@@ -4,9 +4,14 @@ import path from "node:path";
 import readline from "node:readline";
 
 export interface FileMsg { path: string; mode: number; b64: string }
-export interface ExecResponse { stdout: string; stderr: string; code: number; changed: FileMsg[]; deleted: string[] }
+export interface ExecResponse { stdout: string; stderr: string; code: number; changed: FileMsg[]; deleted: string[]; dirs?: string[] }
 
-type Manifest = Map<string, string>; // relative path -> "mtimeMs:size"
+type Manifest = {
+  files: Map<string, string>; // path -> "mtimeNs:size"
+  dirs: Set<string>;
+  /** When this was taken. Anything modified at or after it cannot be trusted to differ. */
+  takenNs: bigint;
+};
 
 /**
  * Never synced, matched by directory name at any depth. Copying these over vsock on every
@@ -17,7 +22,7 @@ type Manifest = Map<string, string>; // relative path -> "mtimeMs:size"
 const SKIP = new Set(["node_modules", ".git"]);
 
 export function manifest(root: string): Manifest {
-  const m: Manifest = new Map();
+  const m: Manifest = { files: new Map(), dirs: new Set(), takenNs: process.hrtime.bigint() && BigInt(Date.now()) * 1000000n };
   const base = realpathSync(root);
   const walk = (dir: string, rel: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -34,8 +39,10 @@ export function manifest(root: string): Manifest {
       if (real !== full) continue;
       const st = statSync(full, { throwIfNoEntry: false });
       if (!st) continue;
-      if (st.isDirectory()) walk(full, r);
-      else if (st.isFile()) m.set(r, `${Math.floor(st.mtimeMs)}:${st.size}`);
+      if (st.isDirectory()) { m.dirs.add(r); walk(full, r); }
+      // nanoseconds, not truncated milliseconds: a file rewritten to the same size inside
+      // one millisecond is otherwise indistinguishable from the old one and never syncs
+      else if (st.isFile()) m.files.set(r, `${statSync(full, { bigint: true }).mtimeNs}:${st.size}`);
     }
   };
   walk(base, "");
@@ -49,7 +56,7 @@ export class AgentClient {
   private pending: { resolve(line: string): void; reject(e: Error): void }[] = [];
   private dead?: Error;
   /** What the guest is known to hold. */
-  private synced: Manifest = new Map();
+  private synced: Manifest = { files: new Map(), dirs: new Set(), takenNs: 0n };
 
   constructor(private connect: () => Promise<net.Socket>, private workspace: string) {}
 
@@ -89,15 +96,20 @@ export class AgentClient {
   async pushChanges() {
     const now = manifest(this.workspace);
     const files: FileMsg[] = [];
-    for (const [rel, sig] of now) {
-      if (this.synced.get(rel) === sig) continue;
+    for (const [rel, sig] of now.files) {
+      // Same size inside the same tick as the last sync looks identical, so trust the
+      // signature only for files that were already settled when that sync was taken.
+      const settled = BigInt(sig.split(":")[0]) < this.synced.takenNs;
+      if (settled && this.synced.files.get(rel) === sig) continue;
       const full = path.join(this.workspace, rel);
       const st = lstatSync(full, { throwIfNoEntry: false });
       if (!st || !st.isFile()) continue; // vanished, or no longer a regular file
       files.push({ path: rel, mode: st.mode & 0o777, b64: readFileSync(full).toString("base64") });
     }
-    const del = [...this.synced.keys()].filter((r) => !now.has(r));
-    if (files.length || del.length) await this.request({ op: "sync", files, delete: del });
+    const del = [...this.synced.files.keys()].filter((r) => !now.files.has(r));
+    // directories carry no files, so nothing else would ever create them in the guest
+    const dirs = [...now.dirs].filter((d) => !this.synced.dirs.has(d));
+    if (files.length || del.length || dirs.length) await this.request({ op: "sync", files, delete: del, dirs });
     this.synced = now;
   }
 
@@ -105,6 +117,7 @@ export class AgentClient {
     await this.pushChanges();
     const r: ExecResponse = await this.request({ op: "exec", cmd, cwd, env });
     for (const rel of r.deleted) rmSync(path.join(this.workspace, rel), { force: true });
+    for (const rel of r.dirs ?? []) mkdirSync(path.join(this.workspace, rel), { recursive: true });
     for (const f of r.changed) {
       const full = path.join(this.workspace, f.path);
       mkdirSync(path.dirname(full), { recursive: true });

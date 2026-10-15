@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -75,7 +75,7 @@ test("the manifest never follows a symlink out of the workspace", () => {
   writeFileSync(path.join(ws, "sub/b.txt"), "also mine\n");
   symlinkSync(outside, path.join(ws, "escape"));
   symlinkSync(path.join(outside, "secret.txt"), path.join(ws, "peek.txt"));
-  assert.deepEqual([...manifest(ws).keys()].sort(), ["a.txt", "sub/b.txt"]);
+  assert.deepEqual([...manifest(ws).files.keys()].sort(), ["a.txt", "sub/b.txt"]);
 });
 
 test("the manifest skips node_modules and .git wherever they appear", () => {
@@ -87,7 +87,7 @@ test("the manifest skips node_modules and .git wherever they appear", () => {
   writeFileSync(path.join(ws, ".git/objects/abc"), "blob\n");
   writeFileSync(path.join(ws, "node_modules_old/keep.txt"), "not a dep dir\n");
   writeFileSync(path.join(ws, "a.txt"), "mine\n");
-  assert.deepEqual([...manifest(ws).keys()].sort(), ["a.txt", "node_modules_old/keep.txt"]);
+  assert.deepEqual([...manifest(ws).files.keys()].sort(), ["a.txt", "node_modules_old/keep.txt"]);
 });
 
 test("a configured network reaches the guest as a nic and on the cmdline", () => {
@@ -111,5 +111,32 @@ test("a guest that dies mid-request does not leave the caller waiting", async ()
     await assert.rejects(slow, /closed/);
     // and anything asked afterwards fails rather than hanging
     await assert.rejects(client.exec("true", guest), /closed/);
+  } finally { done(); }
+});
+
+test("an empty directory reaches the guest, and one the guest makes comes back", async () => {
+  const { host, guest, client, done } = await rig();
+  try {
+    mkdirSync(path.join(host, "dist/nested"), { recursive: true });
+    const r = await client.exec("test -d dist/nested && mkdir -p out/made && echo yes", guest);
+    assert.equal(r.stdout.trim(), "yes", "a directory with no files in it must still exist in the guest");
+    assert.ok(existsSync(path.join(host, "out/made")), "and one the guest creates must come back");
+  } finally { done(); }
+});
+
+test("a same-size rewrite the signature cannot distinguish is still seen", async () => {
+  const { host, guest, client, done } = await rig();
+  try {
+    // Pin the timestamp so both versions carry an identical mtime and size: what a
+    // filesystem with coarse timestamps does on its own, and what clock skew does to any
+    // of them. The signature is then useless and only the unsettled check saves it.
+    const f = path.join(host, "f.txt");
+    const stamp = Date.now() / 1000 + 1;
+    writeFileSync(f, "aaaa");
+    utimesSync(f, stamp, stamp);
+    await client.exec("true", guest);
+    writeFileSync(f, "bbbb");
+    utimesSync(f, stamp, stamp);
+    assert.equal((await client.exec("cat f.txt", guest)).stdout, "bbbb");
   } finally { done(); }
 });

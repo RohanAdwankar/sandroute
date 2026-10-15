@@ -3,7 +3,7 @@
 
 Protocol: one JSON object per line in each direction.
   {"op":"ping"}                                   -> {"ok":true}
-  {"op":"sync","files":[{path,mode,b64}],"delete":[path]}   -> {"ok":true}
+  {"op":"sync","files":[{path,mode,b64}],"delete":[path],"dirs":[path]}  -> {"ok":true}
   {"op":"exec","cmd":str,"cwd":str,"env":{}}      -> {"stdout","stderr","code","changed":[{path,mode,b64}],"deleted":[path]}
   {"op":"busy"}                                   -> {"busy":bool,"procs":[{pid,comm}]}
 Paths are relative to the workspace root. The workspace lives at the same absolute path in the guest as on the host.
@@ -14,10 +14,14 @@ EXCLUDE_DIRS = {"node_modules", ".git"}  # must match SKIP in agent-client.ts
 
 
 def snapshot(root):
-    snap = {}
+    """Files by signature, plus every directory: a directory holding no files is invisible
+    to a file-only walk, so it would never reach the other side."""
+    snap, dirs = {}, set()
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
         rel_dir = os.path.relpath(dirpath, root)
+        if rel_dir != ".":
+            dirs.add(rel_dir)
         for name in filenames:
             full = os.path.join(dirpath, name)
             rel = name if rel_dir == "." else os.path.join(rel_dir, name)
@@ -28,7 +32,7 @@ def snapshot(root):
             if not os.path.isfile(full) or os.path.islink(full):
                 continue
             snap[rel] = (st.st_mtime_ns, st.st_size)
-    return snap
+    return snap, dirs
 
 
 def read_file(root, rel):
@@ -108,6 +112,8 @@ def handle(root, req):
                 os.remove(safe(root, rel))
             except FileNotFoundError:
                 pass
+        for rel in req.get("dirs", []):
+            os.makedirs(safe(root, rel), exist_ok=True)
         for f in req.get("files", []):
             full = safe(root, f["path"])
             os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -116,12 +122,12 @@ def handle(root, req):
             os.chmod(full, f.get("mode", 0o644))
         return {"ok": True}
     if op == "exec":
-        before = snapshot(root)
+        before, before_dirs = snapshot(root)
         env = dict(os.environ)
         env.update(req.get("env") or {})
         cwd = req.get("cwd") or root
         p = subprocess.run(["bash", "-c", req["cmd"]], cwd=cwd, env=env, capture_output=True)
-        after = snapshot(root)
+        after, after_dirs = snapshot(root)
         changed = [read_file(root, r) for r, v in after.items() if before.get(r) != v]
         deleted = [r for r in before if r not in after]
         return {
@@ -130,6 +136,7 @@ def handle(root, req):
             "code": p.returncode,
             "changed": changed,
             "deleted": deleted,
+            "dirs": sorted(after_dirs - before_dirs),
         }
     return {"error": "unknown op " + str(op)}
 
