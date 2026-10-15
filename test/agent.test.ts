@@ -11,13 +11,13 @@ import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
 // standing in for the guest disk. This exercises the protocol and the file sync, not the VM.
-async function rig() {
+async function rig(maxFileBytes?: number) {
   const host = mkdtempSync(path.join(tmpdir(), "host-"));
   const guest = mkdtempSync(path.join(tmpdir(), "guest-"));
   const sock = path.join(mkdtempSync(path.join(tmpdir(), "sock-")), "a.sock");
   const agent: ChildProcess = spawn("python3", ["-I", "guest/agent.py", "--workspace", guest, "--unix", sock], { stdio: ["ignore", "pipe", "inherit"] });
   await new Promise<void>((r) => agent.stdout!.once("data", () => r()));
-  const client = new AgentClient(() => new Promise((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), host);
+  const client = new AgentClient(() => new Promise((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), host, maxFileBytes);
   await client.open();
   return { host, guest, client, done: () => { client.close(); agent.kill(); } };
 }
@@ -156,4 +156,12 @@ test("a snapshot is not reused across workspaces or across rebuilt images", () =
   assert.notEqual(first, key("/work/one"), "a rebuilt image must not restore a snapshot of the old one");
 
   assert.equal(snapshotPaths({ kernel, rootfs }, "/work/one"), undefined, "no snapshot dir, no snapshot");
+});
+
+test("a file too large to copy fails by name instead of dying inside the sync", async () => {
+  const { host, guest, client, done } = await rig(1024);
+  try {
+    writeFileSync(path.join(host, "fixture.bin"), Buffer.alloc(4096));
+    await assert.rejects(client.exec("true", guest), /fixture\.bin is 0MiB, over the 0MiB sync limit/);
+  } finally { done(); }
 });

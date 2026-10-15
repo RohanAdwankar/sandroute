@@ -25,6 +25,8 @@ export interface FirecrackerOptions {
   agentPort?: number;
   /** Pipe the guest console to this process. Off by default, and the only way to see why a boot failed. */
   console?: boolean;
+  /** Refuse to sync a file larger than this. Defaults to 64MiB. */
+  maxFileBytes?: number;
   /**
    * Give the guest a network. It behaves like any other machine: it can reach the
    * internet and install what it needs, and it cannot reach the host.
@@ -251,7 +253,7 @@ export class FirecrackerVm implements VmBackend {
   }
 
   private async openClient() {
-    this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace);
+    this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
     await this.client.open();
   }
 

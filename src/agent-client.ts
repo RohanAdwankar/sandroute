@@ -58,7 +58,9 @@ export class AgentClient {
   /** What the guest is known to hold. */
   private synced: Manifest = { files: new Map(), dirs: new Set(), takenNs: 0n };
 
-  constructor(private connect: () => Promise<net.Socket>, private workspace: string) {}
+  /** Whole files go over the wire base64'd, in one JSON line, on every wake. Past a point
+   *  that is not a slow sync, it is a dead one: node cannot hold a string over ~512MB. */
+  constructor(private connect: () => Promise<net.Socket>, private workspace: string, private maxFileBytes = 64 * 1024 * 1024) {}
 
   async open() {
     this.sock = await this.connect();
@@ -104,6 +106,8 @@ export class AgentClient {
       const full = path.join(this.workspace, rel);
       const st = lstatSync(full, { throwIfNoEntry: false });
       if (!st || !st.isFile()) continue; // vanished, or no longer a regular file
+      if (st.size > this.maxFileBytes)
+        throw new Error(`${rel} is ${(st.size / 2 ** 20).toFixed(0)}MiB, over the ${(this.maxFileBytes / 2 ** 20).toFixed(0)}MiB sync limit; the workspace is copied into the guest on every wake`);
       files.push({ path: rel, mode: st.mode & 0o777, b64: readFileSync(full).toString("base64") });
     }
     const del = [...this.synced.files.keys()].filter((r) => !now.files.has(r));
