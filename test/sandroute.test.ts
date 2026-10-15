@@ -190,3 +190,30 @@ test("the search tools see the workspace and nothing outside it", async () => {
   await s.grepFiles("needle", outside);
   assert.equal(vm.execs, 2, "a path outside the workspace is escalated, not served here");
 });
+
+test("no command reads a host file outside the workspace, however the path is built", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const outside = mkdtempSync(path.join(tmpdir(), "outside-"));
+  const secret = "s3cret-" + Math.random().toString(36).slice(2);
+  writeFileSync(path.join(outside, "keep.txt"), secret + "\n");
+  const target = path.join(outside, "keep.txt");
+  const vm = new CountingVm(); // stands in for the machine, and knows nothing of the host
+  const s = new Sandroute({ workspace: ws, vm });
+
+  // The router reads the command text, so any path it cannot see statically is a way
+  // past it. These are examples of that, not the list: what has to hold is that the
+  // filesystem underneath refuses regardless of which tier the router picked.
+  for (const cmd of [
+    `cat ${target}`,
+    `P=${target}; cat $P`,
+    `eval "cat ${target}"`,
+    `cat $(echo ${target})`,
+    `c=cat; $c ${target}`,
+    `echo ${Buffer.from(`cat ${target}`).toString("base64")} | base64 -d | sh`,
+    `cat ${path.relative(ws, target)}`,
+    `cd ${outside} && cat keep.txt`,
+  ]) {
+    const r = await s.run(cmd);
+    assert.ok(!(r.stdout + r.stderr).includes(secret), `leaked through: ${cmd}`);
+  }
+});

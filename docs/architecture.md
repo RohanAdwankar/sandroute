@@ -70,6 +70,20 @@ Measured on one bare-metal KVM host. Turn latency against an agent running insid
 | `git clone/init/add/commit/status/log` | in-process | isomorphic-git, no git binary |
 | any other `git` subcommand | VM | not implemented in-process |
 
+## What actually contains a command
+
+The router reads command text, so anything that builds a path at runtime is past it:
+`P=/etc/hostname; cat $P`, `eval`, `$(...)`, a base64 pipe into `sh`. That is fine,
+because the router decides *where* a command runs and not *what it may touch*. The
+boundary is the filesystem under it: `MountableFs` serves the workspace from
+`ReadWriteFs` and everything else from an empty `InMemoryFs`, so a command that evades
+the router still finds nothing. Treating the router as a security control is the mistake
+to avoid -- it is a performance control that happens to escalate suspicious things.
+
+This holds for the in-process tier only. `HostProcessVm`, the default backend, runs
+commands as plain host processes and is documented as not isolated; with it, anything
+escalated to "the VM" runs on the host with the agent's full reach.
+
 ## Invariants
 
 - **The host owns the workspace.** The guest copy is pushed in on every VM command and dies
