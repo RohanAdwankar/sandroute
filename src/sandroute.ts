@@ -45,6 +45,8 @@ export class Sandroute {
   lastPinned: { pid: number; comm: string }[] = [];
   /** Paths the guest kept its own version of because both sides had changed them. */
   conflicts: string[] = [];
+  /** Why the last release was refused, when the machine could not be asked. */
+  lastPinnedError?: string;
   /** Wall time the VM has been allocated, which is what a microVM actually costs. */
   private allocMs = 0;
   private allocSince?: number;
@@ -212,8 +214,13 @@ export class Sandroute {
       let live;
       try {
         live = await this.vm.busy();
-      } catch {
-        live = { busy: true, procs: [] }; // cannot prove it is idle, so keep it
+      } catch (e) {
+        // Cannot prove it is idle, so keep it -- but a probe that always fails pins the
+        // VM forever, which looks exactly like a machine that is legitimately busy.
+        this.lastPinnedError = (e as Error).message;
+        if (this.opts.logFile)
+          appendFileSync(this.opts.logFile, JSON.stringify({ t: new Date().toISOString(), pinnedBy: "probe failed", error: this.lastPinnedError }) + "\n");
+        live = { busy: true, procs: [] };
       }
       if (live.busy) {
         this.pinnedCount++;

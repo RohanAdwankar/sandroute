@@ -126,7 +126,7 @@ test("a vm with a background process is pinned, not killed", async () => {
   await s.stop();
 });
 
-test("a backend that cannot answer busy keeps the vm", async () => {
+test("a backend that cannot answer busy keeps the vm, and says why", async () => {
   const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
   const vm = new BusyVm();
   vm.busy = async () => { throw new Error("vsock gone"); };
@@ -134,6 +134,8 @@ test("a backend that cannot answer busy keeps the vm", async () => {
   await s.run("chromium --version");
   await settle(200);
   assert.equal(vm.stops, 0, "unprovable idleness must not count as idle");
+  assert.match(s.lastPinnedError ?? "", /vsock gone/,
+    "a probe that always fails pins forever and must not look like a busy machine");
   await s.stop();
 });
 
