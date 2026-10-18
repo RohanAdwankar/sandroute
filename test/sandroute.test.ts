@@ -104,6 +104,11 @@ test("the vm is kept while a command is in flight", async () => {
   await s.stop();
 });
 
+class SuspendingVm extends CountingVm {
+  suspends = 0;
+  async suspend() { this.suspends++; }
+}
+
 class BusyVm extends CountingVm {
   procs: { pid: number; comm: string }[] = [];
   async busy() { return { busy: this.procs.length > 0, procs: this.procs }; }
@@ -218,4 +223,16 @@ test("no command reads a host file outside the workspace, however the path is bu
     const r = await s.run(cmd);
     assert.ok(!(r.stdout + r.stderr).includes(secret), `leaked through: ${cmd}`);
   }
+});
+
+test("a backend that can suspend is suspended, not stopped", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new SuspendingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 40 });
+  await s.run("chromium --version");
+  await settle(200);
+  assert.equal(vm.suspends, 1, "releasing must keep what the machine accumulated");
+  assert.equal(vm.stops, 0, "a clean stop would throw it away");
+  await s.stop();
+  assert.equal(vm.stops, 0, "and the vm was already handed back");
 });

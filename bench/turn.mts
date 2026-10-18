@@ -46,12 +46,30 @@ const base: [string, number][] = [
   L("python3 -c 'print(\"done\")'", 3000),
   L("cat src/d0/f4.ts"), L("ls src/d2"), L("grep -rl pin src | wc -l"), L("cat src/d0/f5.ts"),
 ];
-const turn = Array.from({ length: repeat }, () => base).flat();
+// --heavy is a turn with real work in it: installing a dependency and running something
+// that takes seconds rather than milliseconds. The light list answers "how much of a turn
+// is the machine needed for"; this one answers whether that survives commands with weight.
+const realWork: [string, number][] = [
+  L("ls -la"),
+  L(`cat > app.py <<'PY'\nimport requests\nprint("deps ok", requests.__name__)\nPY`),
+  L("wc -l app.py"),
+  L("python3 -m pip install --quiet --no-warn-script-location requests", 2000),
+  L("python3 app.py", 2000),
+  L("grep -c requests app.py"),
+  L(`sed -i 's/deps ok/dependencies ok/' app.py`),
+  L("python3 app.py", 2000),
+  L("cat app.py"),
+  L("python3 -c \"import requests;print(requests.get('https://pypi.org/simple/', timeout=20).status_code)\""),
+];
+const turn = Array.from({ length: repeat }, () => (process.argv.includes("--heavy") ? realWork : base)).flat();
 turn[turn.length - 1] = [turn[turn.length - 1][0], 0];
 
 const fcOpts = {
   bin: `${A}/firecracker`, kernel: `${A}/vmlinux-6.1.128`, rootfs: `${A}/rootfs.ext4`,
   vcpus: 2, memMiB: 1024, snapshotDir: `${A}/snapcache`,
+  network: process.env.SANDROUTE_TAP
+    ? { tap: process.env.SANDROUTE_TAP, guestIp: process.env.SANDROUTE_GUEST_IP ?? "172.16.0.2/30", gateway: process.env.SANDROUTE_GATEWAY ?? "172.16.0.1" }
+    : undefined,
 };
 
 let label: string, turnMs: number, callMs: number[], allocMs: number, wakes = 0, wakeMs = 0, heavy = 0;
@@ -66,7 +84,8 @@ if (baseline) {
   // vsock hop -- which is what it would be if the agent itself lived in here.
   const script = turn.map(([cmd, gap], i) => [
     "T=${EPOCHREALTIME/./}",
-    `{ ${cmd} ; } >/dev/null 2>&1`,
+    // braces on their own lines, so a command carrying a heredoc survives
+    `{\n${cmd}\n} >/dev/null 2>&1`,
     "E=${EPOCHREALTIME/./}",
     `echo "T ${i} $((E-T))"`,
     gap ? `sleep ${(gap / 1000).toFixed(3)}` : "",

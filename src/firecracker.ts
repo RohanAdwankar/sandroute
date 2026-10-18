@@ -176,6 +176,10 @@ export class FirecrackerVm implements VmBackend {
   private client?: AgentClient;
   private workspace = "";
   private dir = "";
+  private apiSock = "";
+  /** Snapshot of this session, written when it is suspended. Holds whatever the guest
+   *  has accumulated -- installed packages, caches -- which the workspace does not cover. */
+  private sessionSnap?: { state: string; mem: string };
   /** True when the last boot() restored a snapshot rather than cold booting. */
   lastBootWasRestore = false;
 
@@ -183,6 +187,14 @@ export class FirecrackerVm implements VmBackend {
 
   async boot(workspace: string): Promise<void> {
     this.workspace = workspace;
+    if (this.sessionSnap) {
+      // resume this session rather than start a clean one: anything installed is in here
+      this.lastBootWasRestore = true;
+      await this.restore(this.sessionSnap);
+      await this.probeAgent();
+      await this.openClient();
+      return;
+    }
     const snap = this.snapPaths(workspace);
     if (snap && existsSync(snap.state) && existsSync(snap.mem)) {
       this.lastBootWasRestore = true;
@@ -205,7 +217,7 @@ export class FirecrackerVm implements VmBackend {
    * snapshot lets many restored VMs coexist instead of fighting over one absolute path. */
   private spawnFc(): string {
     this.dir = mkdtempSync(path.join(tmpdir(), "sandroute-fc-"));
-    const apiSock = path.join(this.dir, "api.sock");
+    const apiSock = (this.apiSock = path.join(this.dir, "api.sock"));
     this.proc = spawn(this.o.bin ?? "firecracker", ["--api-sock", apiSock], {
       cwd: this.dir,
       stdio: this.o.console ? ["ignore", "inherit", "inherit"] : "ignore",
@@ -278,11 +290,51 @@ export class FirecrackerVm implements VmBackend {
 
   onConflict?: (paths: string[]) => void;
 
-  async stop(): Promise<void> {
+  /**
+   * Hand the machine back without losing what is in it. A pristine restore throws away
+   * everything the guest accumulated -- an agent that installed a dependency would find
+   * it gone -- so the session is written to its own snapshot and the next boot resumes
+   * from there. fsync is skipped: this has to survive a release, not a host crash.
+   */
+  async suspend(): Promise<void> {
+    if (!this.proc) return;
+    const dir = this.o.snapshotDir ?? tmpdir();
+    mkdirSync(dir, { recursive: true });
+    const base = this.sessionSnap ?? {
+      state: path.join(dir, `session-${process.pid}-${Date.now().toString(36)}.state`),
+      mem: path.join(dir, `session-${process.pid}-${Date.now().toString(36)}.mem`),
+    };
+    // Hang up first. A vsock connection does not survive a snapshot, and a guest
+    // restored while holding one comes back with a dead socket and never accepts again.
     this.client?.close();
     this.client = undefined;
-    this.proc?.kill("SIGKILL");
+    await sleep(50);
+    await api(this.apiSock, "/vm", { state: "Paused" }, "PATCH");
+    await api(this.apiSock, "/snapshot/create", {
+      snapshot_type: "Full", snapshot_path: base.state, mem_file_path: base.mem, sync_snapshot_files: false,
+    });
+    this.sessionSnap = base;
+    await this.halt();
+  }
+
+  async stop(): Promise<void> {
+    await this.halt();
+    for (const f of [this.sessionSnap?.state, this.sessionSnap?.mem]) if (f) rmSync(f, { force: true });
+    this.sessionSnap = undefined;
+  }
+
+  /** Kill firecracker and wait for it to go: a tap is exclusive, so starting the next VM
+   *  before this process has released its fd fails with "Resource busy". */
+  private async halt(): Promise<void> {
+    this.client?.close();
+    this.client = undefined;
+    const proc = this.proc;
     this.proc = undefined;
+    if (proc && proc.exitCode === null && !proc.killed) {
+      const gone = new Promise<void>((r) => proc.once("exit", () => r()));
+      proc.kill("SIGKILL");
+      await Promise.race([gone, sleep(2000)]);
+    }
     if (this.dir) rmSync(this.dir, { recursive: true, force: true });
   }
 }

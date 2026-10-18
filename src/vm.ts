@@ -26,5 +26,11 @@ export interface VmBackend {
    * workspace converges on it.
    */
   onConflict?: (paths: string[]) => void;
+  /**
+   * Hand the machine back but keep what is in it, so the next boot resumes rather than
+   * starts clean. A backend without this is stopped instead, and anything the guest held
+   * that the workspace does not cover is lost.
+   */
+  suspend?(): Promise<void>;
   stop(): Promise<void>;
 }

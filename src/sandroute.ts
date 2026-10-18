@@ -237,7 +237,8 @@ export class Sandroute {
       this.allocSince = undefined;
     }
     this.releaseCount++;
-    await this.vm.stop();
+    // keep what the guest accumulated, if the backend can; a clean restore would drop it
+    await (this.vm.suspend ? this.vm.suspend() : this.vm.stop());
     return true;
   }
 
