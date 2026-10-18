@@ -88,10 +88,13 @@ Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KE
   device needs CAP_NET_ADMIN, so sandroute cannot create one for itself. Without it the guest
   has loopback only, and an agent that hits a missing tool has no way to go and get it.
   `npx tsx e2e/capabilities.mts` reports which of the two it is.
-- The networked path is written but **unverified end to end**: the machine it was built on
-  has no root and restricts unprivileged user namespaces, so no tap could be created to test
-  against. What is covered is the config sandroute sends and the guest-side setup; what is not
-  is a packet actually leaving.
+- Verified end to end against a real tap: the guest gets `eth0` with a route and resolver,
+  resolves DNS, speaks TLS, installs a package from PyPI, and cannot reach the host.
+  `SANDROUTE_TAP=sr-tap0 npx tsx e2e/capabilities.mts` checks all of it.
+- The image has to carry three things most base images take for granted, or the guest has a
+  working network and still cannot use it: a CA bundle, `pip`, and no PEP 668
+  `EXTERNALLY-MANAGED` marker. Without the first, TLS fails everywhere; without the last,
+  `pip install` refuses and tells the agent to make a virtualenv.
 - The rootfs image is not built by this repo yet.
 - `FirecrackerVm` spawns firecracker with `stdio: "ignore"`, so there is no way to see the guest console when a boot goes wrong.
 - Sync compares mtime and size and sends whole files, so a large workspace is slow to push, and spin-down makes that a recurring cost: a VM-tier no-op is 1.7ms at 10 files, 9.4ms at 500 and 48.6ms at 3000. Sharing the workspace into the guest with virtio-fs would remove it and leave the wake at the 11ms restore.

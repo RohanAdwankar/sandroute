@@ -17,6 +17,9 @@ rmSync(WS, { recursive: true, force: true }); mkdirSync(WS, { recursive: true })
 const vm = new FirecrackerVm({
   bin: `${A}/firecracker`, kernel: process.env.SANDROUTE_FC_KERNEL ?? `${A}/vmlinux-6.1.128`,
   rootfs: process.env.SANDROUTE_FC_ROOTFS ?? `${A}/rootfs.ext4`, snapshotDir: `${A}/snapcache`,
+  network: process.env.SANDROUTE_TAP
+    ? { tap: process.env.SANDROUTE_TAP, guestIp: process.env.SANDROUTE_GUEST_IP ?? "172.16.0.2/30", gateway: process.env.SANDROUTE_GATEWAY ?? "172.16.0.1" }
+    : undefined,
 });
 await vm.boot(WS);
 const sh = async (cmd: string) => (await vm.exec(cmd, { cwd: WS })).stdout.trim();
@@ -34,6 +37,12 @@ const net = [
   ["a resolver config", `test -f /etc/resolv.conf && echo yes || echo no`, (o: string) => o === "yes"],
   ["DNS resolution", `python3 -c "import socket;socket.setdefaulttimeout(5);socket.gethostbyname('pypi.org');print('yes')" 2>/dev/null || echo no`, (o: string) => o === "yes"],
   ["outbound TCP", `python3 -c "import socket;socket.setdefaulttimeout(5);socket.create_connection(('1.1.1.1',443));print('yes')" 2>/dev/null || echo no`, (o: string) => o === "yes"],
+  ["trusted TLS", `python3 -c "import urllib.request as u;u.urlopen('https://pypi.org/simple/',timeout=20);print('yes')" 2>/dev/null || echo no`, (o: string) => o === "yes"],
+  ["installing a package", `python3 -m pip install --quiet --no-warn-script-location --disable-pip-version-check six >/dev/null 2>&1 && python3 -c "import six;print('yes')" || echo no`, (o: string) => o === "yes"],
+  ["the host stays unreachable", `python3 -c "
+import socket;socket.setdefaulttimeout(4)
+try: socket.create_connection(('${process.env.SANDROUTE_GATEWAY ?? "172.16.0.1"}',22)); print('no')
+except Exception: print('yes')"`, (o: string) => o === "yes"],
 ] as const;
 
 console.log("\nwhich it can only do if the guest has a network:\n");
