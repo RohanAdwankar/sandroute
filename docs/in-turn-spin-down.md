@@ -242,18 +242,40 @@ does nothing for the host, so a VM holds its high-water mark for the rest of its
 A session that ran one build carries that build's peak until it goes away, which makes
 releasing it the only thing that actually reclaims the memory.
 
-Sessions per host, giving each one a VM against giving one only when it is needed:
+That is the marginal cost of a session, with the harness left out. It does not survive
+counting the harness, and the harness is most of the memory.
 
-| host | a VM each, idle | a VM each, after an install | after a peak | in-process |
-|---|---|---|---|---|
-| 16 GiB | 143 | 78 | 46 | **583** |
-| 64 GiB | 574 | 314 | 187 | **2335** |
-| 256 GiB | 2296 | 1257 | 750 | **9341** |
+Measured with opencode actually launched, one process per session, each run confirmed to
+have executed a tool by the file it left behind (three runs each):
 
-So the honest claim is 4x at rest and better than 12x once sessions have done something,
-and it comes from not having a machine rather than from the machine being slow. Firecracker's
-balloon device with free-page reporting would claw some of this back without any routing
-at all, which is what Meta's Muse does; that is the comparison this table is missing.
+```
+stock opencode                       828-859 MiB   median 854
+opencode with the sandroute tools    895-1097 MiB  median 927   (+73)
+a restored microVM, idle             114 MiB
+```
+
+So per session, a VM each against a VM only when one is needed:
+
+| | plain VM | sandroute | ratio |
+|---|---|---|---|
+| idle | 968 MiB | 927 MiB | 1.04x |
+| after an install | 1062 MiB | 927 MiB | 1.15x |
+| after a 200 MiB peak | 1203 MiB | 927 MiB | 1.30x |
+
+On a 64 GiB host that is 67, 61 and 54 sessions against 70. The 4x and 12x above hold only
+if sessions share one harness process, so that the marginal session costs 29 MiB and not
+927; I have not measured how much a second session costs inside a single opencode server,
+which is the number that decides it. With one opencode per session, the light tier is worth
+a few percent at rest and about a quarter once a session has run something, because opencode
+is two thirds of the footprint on both sides and the sandroute tools add about 70 MiB to it.
+
+The earlier figure of 4x came from measuring the in-process session after the interpreter had
+already been loaded, which leaves its load cost out of the per-session number. Loaded inside
+each opencode process that cost is paid once per session.
+
+Firecracker's balloon device with free-page reporting would claw some of the VM's share back
+without any routing at all, which is what Meta's Muse does; that is the comparison this is
+missing.
 
 ## Caveats
 
