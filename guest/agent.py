@@ -2,7 +2,7 @@
 """Guest agent. Runs inside the microVM and serves one host over vsock.
 
 Protocol: one JSON object per line in each direction.
-  {"op":"ping"}                                   -> {"ok":true}
+  {"op":"ping"}                                   -> {"ok":true,"agent":"<hash of this file>"}
   {"op":"sync","files":[{path,mode,b64}],"delete":[path],"dirs":[path]}  -> {"ok":true}
   {"op":"exec","cmd":str,"cwd":str,"env":{}}      -> {"stdout","stderr","code","changed":[{path,mode,b64}],"deleted":[path]}
   {"op":"busy"}                                   -> {"busy":bool,"procs":[...],changed,deleted,dirs}
@@ -10,7 +10,12 @@ Every reply that can carry files reports what differs from the host's copy, when
 changed, so work by a process the agent left running is not lost between commands.
 Paths are relative to the workspace root. The workspace lives at the same absolute path in the guest as on the host.
 """
-import argparse, base64, json, os, socket, subprocess, sys
+import argparse, base64, hashlib, json, os, socket, subprocess, sys
+
+# The host ships this file and the image carries a copy. An image built from an older one
+# answers a protocol the host no longer speaks, and the failures that follow look like
+# anything but a stale build -- so say which copy this is and let the host object.
+VERSION = hashlib.sha256(open(os.path.abspath(__file__), "rb").read()).hexdigest()[:12]
 
 EXCLUDE_DIRS = {"node_modules", ".git"}  # must match SKIP in agent-client.ts
 
@@ -127,7 +132,7 @@ def drift(root):
 def handle(root, req):
     op = req.get("op")
     if op == "ping":
-        return {"ok": True}
+        return {"ok": True, "agent": VERSION}
     if op == "busy":
         procs = live_processes()
         # whatever is still running has been writing; hand that over while reporting it,

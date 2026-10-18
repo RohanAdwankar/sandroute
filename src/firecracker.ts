@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -131,6 +132,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const VSOCK_REL = "v.sock";
 
+/** Hash of the guest agent this build ships, so an image built from an older one is
+ *  refused at connect rather than failing later in ways that look like anything else. */
+const AGENT_VERSION = createHash("sha256")
+  .update(readFileSync(new URL("../guest/agent.py", import.meta.url)))
+  .digest("hex")
+  .slice(0, 12);
+
 /**
  * Where the ready-to-restore snapshot for a workspace lives, or undefined if snapshots
  * are off. Keyed by the workspace path, because the guest agent's root is baked into
@@ -255,6 +263,7 @@ export class FirecrackerVm implements VmBackend {
   private async openClient() {
     this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
     this.client.onConflict = (p) => this.onConflict?.(p);
+    this.client.expectAgent = AGENT_VERSION;
     await this.client.open();
   }
 

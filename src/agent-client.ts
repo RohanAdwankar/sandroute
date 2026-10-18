@@ -64,6 +64,8 @@ export class AgentClient {
 
   /** Called with paths the guest kept its own version of. */
   onConflict?: (paths: string[]) => void;
+  /** Hash of the agent this host ships. Set it and a stale image is refused at connect. */
+  expectAgent?: string;
 
   async open() {
     this.sock = await this.connect();
@@ -73,7 +75,9 @@ export class AgentClient {
     // caller waits on a reply that is never coming, which hangs the agent outright.
     this.sock.on("error", (e) => this.fail(e));
     this.sock.on("close", () => this.fail(new Error("guest agent connection closed")));
-    await this.request({ op: "ping" });
+    const hello = await this.request({ op: "ping" });
+    if (this.expectAgent && hello.agent !== this.expectAgent)
+      throw new Error(`guest agent is ${hello.agent ?? "of unknown vintage"}, host ships ${this.expectAgent}: rebuild the image from guest/agent.py`);
   }
 
   private fail(e: Error) {

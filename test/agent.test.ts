@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -211,4 +211,24 @@ test("a pinned vm hands over what it has written while it runs", async () => {
     assert.equal(readFileSync(path.join(host, "late.txt"), "utf8"), "served\n",
       "the probe collects what it wrote, without any command being run");
   } finally { done(); }
+});
+
+test("a guest built from a different agent is refused at connect", async () => {
+  // A stub guest, because the point is the handshake and not the agent: the real one
+  // serves a single client at a time, so a second connection would simply wait.
+  const dir = mkdtempSync(path.join(tmpdir(), "stub-"));
+  const sock = path.join(dir, "a.sock");
+  for (const [reported, why] of [["0000deadbeef", "an image built from a different agent"],
+                                 [undefined, "an image too old to say which agent it carries"]] as const) {
+    const srv = net.createServer((c) =>
+      c.on("data", () => c.write(JSON.stringify(reported ? { ok: true, agent: reported } : { ok: true }) + "\n")));
+    await new Promise((r) => srv.listen(sock, () => r(null)));
+    const client = new AgentClient(
+      () => new Promise<net.Socket>((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), dir);
+    client.expectAgent = "feedfacecafe";
+    await assert.rejects(client.open(), /rebuild the image from guest\/agent\.py/, why);
+    client.close();
+    await new Promise((r) => srv.close(() => r(null)));
+    rmSync(sock, { force: true });
+  }
 });
