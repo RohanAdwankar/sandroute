@@ -73,6 +73,8 @@ const fcOpts = {
 };
 
 let label: string, turnMs: number, callMs: number[], allocMs: number, wakes = 0, wakeMs = 0, heavy = 0;
+// A command that fails returns fast, so a broken configuration reads as a quick one.
+const failures: string[] = [];
 const tiers: string[] = [];
 
 if (baseline) {
@@ -86,14 +88,20 @@ if (baseline) {
     "T=${EPOCHREALTIME/./}",
     // braces on their own lines, so a command carrying a heredoc survives
     `{\n${cmd}\n} >/dev/null 2>&1`,
+    "RC=$?",
     "E=${EPOCHREALTIME/./}",
     `echo "T ${i} $((E-T))"`,
+    `echo "X ${i} $RC"`,
     gap ? `sleep ${(gap / 1000).toFixed(3)}` : "",
   ].filter(Boolean).join("\n")).join("\n");
   const t0 = Date.now();
   const r = await vm.exec(script, { cwd: WS });
   turnMs = Date.now() - t0;
   callMs = r.stdout.trim().split("\n").filter((l) => l.startsWith("T ")).map((l) => Number(l.split(" ")[2]) / 1000);
+  for (const l of r.stdout.trim().split("\n").filter((l) => l.startsWith("X "))) {
+    const [, i, code] = l.split(" ");
+    if (code !== "0") failures.push(`${turn[Number(i)][0].split("\n")[0].slice(0, 46)} -> exit ${code}`);
+  }
   if (callMs.length !== turn.length) throw new Error(`expected ${turn.length} timings, got ${callMs.length}`);
   for (const _ of turn) tiers.push("guest");
   heavy = turn.length; // every call is served by the VM
@@ -108,6 +116,7 @@ if (baseline) {
   const t0 = Date.now();
   for (const [cmd, gap] of turn) {
     const r = await s.run(cmd);
+    if (r.exitCode !== 0) failures.push(`${cmd.split("\n")[0].slice(0, 46)} -> exit ${r.exitCode}`);
     callMs.push(r.ms);
     tiers.push(r.booted ? "vm+wake" : r.tier);
     if (r.tier === "vm") heavy++;
@@ -135,5 +144,6 @@ console.log(JSON.stringify({
   p50Ms: +pct(0.5).toFixed(2), p95Ms: +pct(0.95).toFixed(2), maxMs: +Math.max(...callMs).toFixed(2),
   vmAllocatedMs: allocMs,
   vmAllocatedPct: +((allocMs / turnMs) * 100).toFixed(1),
+  failures,
 }, null, 2));
 rmSync(WS, { recursive: true, force: true });
