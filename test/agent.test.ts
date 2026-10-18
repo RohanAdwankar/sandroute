@@ -232,3 +232,23 @@ test("a guest built from a different agent is refused at connect", async () => {
     rmSync(sock, { force: true });
   }
 });
+
+test("the host sets the guest's clock from its own when connecting", async () => {
+  // A restored guest is as far behind as the time since its snapshot, so the host has to
+  // tell it what time it is. A stub guest records what it is asked.
+  const dir = mkdtempSync(path.join(tmpdir(), "stub-"));
+  const sock = path.join(dir, "a.sock");
+  const asked: { op: string; epoch?: number }[] = [];
+  const srv = net.createServer((c) => c.on("data", (d) => {
+    for (const line of d.toString().split("\n").filter(Boolean)) { const r = JSON.parse(line); asked.push(r); c.write(JSON.stringify({ ok: true, agent: "x" }) + "\n"); }
+  }));
+  await new Promise((r) => srv.listen(sock, () => r(null)));
+  const client = new AgentClient(() => new Promise<net.Socket>((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), dir);
+  client.syncClock = true;
+  await client.open();
+  const clock = asked.find((r) => r.op === "clock");
+  assert.ok(clock, "a connect must tell the guest what time it is");
+  assert.ok(Math.abs(clock!.epoch! - Date.now() / 1000) < 2, "and it must be the host's time");
+  client.close();
+  await new Promise((r) => srv.close(() => r(null)));
+});

@@ -10,7 +10,7 @@ Every reply that can carry files reports what differs from the host's copy, when
 changed, so work by a process the agent left running is not lost between commands.
 Paths are relative to the workspace root. The workspace lives at the same absolute path in the guest as on the host.
 """
-import argparse, base64, hashlib, json, os, socket, subprocess, sys
+import argparse, base64, hashlib, json, os, socket, subprocess, sys, time
 
 # The host ships this file and the image carries a copy. An image built from an older one
 # answers a protocol the host no longer speaks, and the failures that follow look like
@@ -133,6 +133,12 @@ def handle(root, req):
     op = req.get("op")
     if op == "ping":
         return {"ok": True, "agent": VERSION}
+    if op == "clock":
+        # A snapshot restore leaves the guest's wall clock where it was when the snapshot
+        # was taken, and it stays that far behind. Anything scheduled by the clock, every
+        # file timestamp, and TLS certificate validity all depend on it being right.
+        time.clock_settime(time.CLOCK_REALTIME, float(req["epoch"]))
+        return {"ok": True}
     if op == "busy":
         procs = live_processes()
         # whatever is still running has been writing; hand that over while reporting it,

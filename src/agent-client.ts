@@ -66,6 +66,9 @@ export class AgentClient {
   onConflict?: (paths: string[]) => void;
   /** Hash of the agent this host ships. Set it and a stale image is refused at connect. */
   expectAgent?: string;
+  /** Set the guest's wall clock from the host on connect. A restored guest is as far
+   *  behind as the time since its snapshot was taken, and needs root to be corrected. */
+  syncClock = false;
 
   async open() {
     this.sock = await this.connect();
@@ -78,6 +81,7 @@ export class AgentClient {
     const hello = await this.request({ op: "ping" });
     if (this.expectAgent && hello.agent !== this.expectAgent)
       throw new Error(`guest agent is ${hello.agent ?? "of unknown vintage"}, host ships ${this.expectAgent}: rebuild the image from guest/agent.py`);
+    if (this.syncClock) await this.request({ op: "clock", epoch: Date.now() / 1000 });
   }
 
   private fail(e: Error) {

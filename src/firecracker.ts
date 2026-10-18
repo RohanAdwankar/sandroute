@@ -276,6 +276,7 @@ export class FirecrackerVm implements VmBackend {
     this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
     this.client.onConflict = (p) => this.onConflict?.(p);
     this.client.expectAgent = AGENT_VERSION;
+    this.client.syncClock = true;
     await this.client.open();
   }
 
