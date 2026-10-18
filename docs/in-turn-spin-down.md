@@ -222,6 +222,39 @@ the same two turns. Releasing the VM is flat because it isn't measuring "time be
 first heavy call" — it's measuring how much of the turn genuinely needs a machine, and
 that doesn't change when you make the turn longer.
 
+## Where the light tier earns its keep
+
+Not in latency. A microVM spawns processes at host speed, so an in-process shell is not
+beating anything -- measured above, 1.2-2.5ms against 1.24ms. What it buys is sessions
+that never need a machine, and that shows up as memory.
+
+```
+one in-process session, host process      29 MiB
+the same session in a microVM
+  restored                               114 MiB
+  after installing a dependency          208 MiB
+  after a 200MiB allocation              349 MiB
+  after that process exited              349 MiB
+```
+
+The last line is the point. Guest memory is never handed back: freeing it inside the VM
+does nothing for the host, so a VM holds its high-water mark for the rest of its life.
+A session that ran one build carries that build's peak until it goes away, which makes
+releasing it the only thing that actually reclaims the memory.
+
+Sessions per host, giving each one a VM against giving one only when it is needed:
+
+| host | a VM each, idle | a VM each, after an install | after a peak | in-process |
+|---|---|---|---|---|
+| 16 GiB | 143 | 78 | 46 | **583** |
+| 64 GiB | 574 | 314 | 187 | **2335** |
+| 256 GiB | 2296 | 1257 | 750 | **9341** |
+
+So the honest claim is 4x at rest and better than 12x once sessions have done something,
+and it comes from not having a machine rather than from the machine being slow. Firecracker's
+balloon device with free-page reporting would claw some of this back without any routing
+at all, which is what Meta's Muse does; that is the comparison this table is missing.
+
 ## Caveats
 
 - **The in-process tier is where the latency goes, and it scales the wrong way.** The 596ms
