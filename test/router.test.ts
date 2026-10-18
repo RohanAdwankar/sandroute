@@ -67,3 +67,13 @@ test("a heredoc body is data, not shell", () => {
   assert.equal(tier(`cat > f.txt <<'EOF' && cat /etc/hosts\njust text\nEOF`), "vm");
   assert.equal(tier(`cat /etc/hosts`), "vm");
 });
+
+test("the process table is the machine's, whatever the interpreter implements", () => {
+  // The in-process shell has no processes, so anything reading or signalling them has to
+  // go to the machine even if the interpreter claims to implement it. Declare it implements
+  // all of these and the answer must not change.
+  const processCommands = ["kill 123", "pkill -f worker", "pgrep node", "killall python3", "pidof sshd",
+    "lsof -i :8080", "ss -ltn", "netstat -tlnp", "fuser 8080/tcp", "crontab -l", "systemctl status x", "service x restart", "uptime"];
+  const claimsAll = new Set([...known, ...processCommands.map((c) => c.split(" ")[0])]);
+  for (const c of processCommands) assert.equal(classify(claimsAll, c, WS).tier, "vm", c);
+});

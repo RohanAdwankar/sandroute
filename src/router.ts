@@ -25,6 +25,12 @@ export const ALWAYS_VM = new Set([
 export const MACHINE_QUERIES = new Set([
   "which", "command", "type", "hash", "env", "printenv", "uname", "id", "whoami",
   "hostname", "nproc", "df", "free", "ps", "top", "lscpu", "curl", "wget", "ssh", "scp",
+  // The process table and the things that schedule against it live in the machine and
+  // nowhere else: the in-process shell has no processes. These go to the VM because of
+  // that, not because the interpreter happens to lack them -- one that gained a `kill`
+  // would otherwise answer about a process table that is always empty.
+  "kill", "pkill", "pgrep", "killall", "pidof", "lsof", "ss", "netstat", "fuser",
+  "crontab", "systemctl", "service", "uptime",
 ]);
 
 /** git subcommands the in-process git implements. Everything else goes to the machine. */
