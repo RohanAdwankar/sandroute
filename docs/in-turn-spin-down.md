@@ -222,6 +222,29 @@ the same two turns. Releasing the VM is flat because it isn't measuring "time be
 first heavy call" — it's measuring how much of the turn genuinely needs a machine, and
 that doesn't change when you make the turn longer.
 
+## Releasing versus routing
+
+The comparison above is against a VM that stays up the whole turn, which is not what a
+careful platform would do. A fair baseline also suspends its VM when idle and restores it on
+the next command. That removes most of the cost by itself, so the question left for routing
+is how much further it goes. Same turns, same 500ms idle window, with every command sent to
+the VM and the VM released when idle:
+
+| turn | VM kept all turn | released, every command in the VM | released, with routing |
+|---|---|---|---|
+| light, 16 of 20 commands in-process | 100% | 20.6% allocated, +3.45% latency, 20 wakes | **4.4%, +1.58%, 4 wakes** |
+| real work, installing a dependency | 100% | 30.2% allocated, +3.93% latency, 10 wakes | **16.7%, +1.82%, 4 wakes** |
+
+Releasing does most of the work, taking the VM from 100% to 20-30% allocated. Routing takes
+it a further 4.7x on the light turn and 1.8x on the one with real work, and it halves the
+latency cost, because a command that stays in-process is a wake that never happens.
+
+The extra saving from routing is roughly the inverse of the share of commands that need a
+machine: 4 of 20 in the first turn, more than half in the second. In the live runs I
+recorded the share was between a third and four fifths (2 of 6, 4 of 6, 6 of 10, 4 of 5),
+so on real agent work expect routing to add the second figure, not the first. Settling that
+needs traces of real sessions, which I do not have.
+
 ## Where the light tier earns its keep
 
 Not in latency. A microVM spawns processes at host speed, so an in-process shell is not
