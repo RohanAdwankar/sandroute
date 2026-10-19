@@ -195,6 +195,8 @@ export class FirecrackerVm implements VmBackend {
   private sessionSnap?: { state: string; mem: string };
   private sessionBase?: string;
   private sessionGen = 0;
+  /** Releases that threw the machine away because it held nothing worth keeping. */
+  discards = 0;
   /** True when the last boot() restored a snapshot rather than cold booting. */
   lastBootWasRestore = false;
 
@@ -317,6 +319,15 @@ export class FirecrackerVm implements VmBackend {
    */
   async suspend(): Promise<void> {
     if (!this.proc) return;
+    // Nothing outside the workspace to keep: the workspace is the host's and is pushed back on
+    // the next wake, so the machine can simply be thrown away. The next boot restores the
+    // shared pristine snapshot, which costs no disk and writes nothing. Only a guest that has
+    // installed or written something is worth the whole of its memory on disk.
+    if (this.sessionSnap === undefined && (await this.client?.state().catch(() => undefined))?.files === 0) {
+      this.discards++;
+      await this.halt();
+      return;
+    }
     const dir = this.o.sessionDir ?? this.o.snapshotDir ?? tmpdir();
     mkdirSync(dir, { recursive: true });
     // Two slots taken in turn. A VM restored from a file keeps it mapped, so writing the

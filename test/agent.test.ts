@@ -11,11 +11,11 @@ import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
 // standing in for the guest disk. This exercises the protocol and the file sync, not the VM.
-async function rig(maxFileBytes?: number) {
+async function rig(maxFileBytes?: number, agentArgs: string[] = []) {
   const host = mkdtempSync(path.join(tmpdir(), "host-"));
   const guest = mkdtempSync(path.join(tmpdir(), "guest-"));
   const sock = path.join(mkdtempSync(path.join(tmpdir(), "sock-")), "a.sock");
-  const agent: ChildProcess = spawn("python3", ["-I", "guest/agent.py", "--workspace", guest, "--unix", sock], { stdio: ["ignore", "pipe", "inherit"] });
+  const agent: ChildProcess = spawn("python3", ["-I", "guest/agent.py", "--workspace", guest, "--unix", sock, ...agentArgs], { stdio: ["ignore", "pipe", "inherit"] });
   await new Promise<void>((r) => agent.stdout!.once("data", () => r()));
   const client = new AgentClient(() => new Promise((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), host, maxFileBytes);
   await client.open();
@@ -275,4 +275,31 @@ test("a firecracker does not outlive the process that started it", async () => {
   const left = spawnSync("pgrep", ["-f", marker]).stdout.toString().trim();
   if (left) spawnSync("pkill", ["-f", marker]);
   assert.equal(left, "", "the microVM must die with the process that owns it");
+});
+
+test("a guest reports state only for what a release would lose and the host cannot rebuild", async () => {
+  // upper stands in for the directory where the guest's changes to its image land, and
+  // scratch for the throwaway space that also vanishes. The workspace is inside upper, as it
+  // is in the real guest, because the whole of the guest's writable root is there.
+  const upper = mkdtempSync(path.join(tmpdir(), "upper-")), scratch = mkdtempSync(path.join(tmpdir(), "scratch-"));
+  mkdirSync(path.join(upper, "usr/lib/py/__pycache__"), { recursive: true });
+  writeFileSync(path.join(upper, "usr/lib/py/__pycache__/mod.pyc"), "bytecode");
+  const { guest, client, done } = await rig(undefined, ["--upper", upper, "--scratch", scratch]);
+  try {
+    const rel = path.relative("/", guest);
+    mkdirSync(path.join(upper, rel), { recursive: true });
+    writeFileSync(path.join(upper, rel, "mine.txt"), "the workspace is the host's");
+    assert.equal((await client.state()).files, 0, "caches and the workspace are not state");
+
+    mkdirSync(path.join(upper, "usr/local/lib/pkg"), { recursive: true });
+    writeFileSync(path.join(upper, "usr/local/lib/pkg/mod.py"), "an installed package");
+    const after = await client.state();
+    assert.equal(after.files, 1, "something written outside the workspace is");
+    assert.deepEqual(after.sample, [path.join(upper, "usr/local/lib/pkg/mod.py")]);
+
+    rmSync(path.join(upper, "usr/local"), { recursive: true });
+    assert.equal((await client.state()).files, 0, "and it stops counting once it is gone");
+    writeFileSync(path.join(scratch, "note.txt"), "scratch space is lost on a release too");
+    assert.equal((await client.state()).files, 1);
+  } finally { done(); }
 });

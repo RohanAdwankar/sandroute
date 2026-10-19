@@ -25,3 +25,25 @@ for (let i = 1; i <= 4; i++) {
   console.log(`cycle ${i}: ${slots} session slot on disk at rest, state after resume: ${JSON.stringify(r.stdout.trim().replace("\n", " + "))}`);
 }
 await a.vm.stop(); await b.vm.stop(); rmSync(base, { recursive: true, force: true });
+
+// ---- a release only writes a snapshot when the guest holds something worth keeping ----
+{
+  rmSync(base, { recursive: true, force: true }); mkdirSync(base, { recursive: true });
+  const prime = mk("prime"); await prime.vm.boot(prime.ws); await prime.vm.stop();
+  const files = (n: string) => { try { return readdirSync(`${base}/sessions-${n}`).filter((f) => f.endsWith(".mem")).length; } catch { return 0; } };
+  const bare = mk("bare"), kept = mk("kept");
+  await Promise.all([bare.vm.boot(bare.ws), kept.vm.boot(kept.ws)]);
+  // the ordinary work of an agent: run some python, write inside the workspace
+  for (const t of [bare, kept]) await t.vm.exec(`python3 -c "import unittest, json; open('/work/out.txt','w').write('made in the guest')"`, { cwd: "/work" });
+  await kept.vm.exec("mkdir -p /usr/local/lib/pkg && echo installed > /usr/local/lib/pkg/mod.py", { cwd: "/work" });
+  const t0 = Date.now(); await bare.vm.suspend(); const dropMs = Date.now() - t0;
+  const t1 = Date.now(); await kept.vm.suspend(); const keepMs = Date.now() - t1;
+  console.log(`\nstateless guest: released in ${dropMs}ms, discarded=${bare.vm.discards}, snapshot files on disk ${files("bare")}`);
+  console.log(`guest with an installed file: released in ${keepMs}ms, discarded=${kept.vm.discards}, snapshot files on disk ${files("kept")}`);
+  const t2 = Date.now(); await bare.vm.boot(bare.ws);
+  const r = await bare.vm.exec("cat /work/who.txt; cat /work/out.txt", { cwd: "/work" });
+  console.log(`woke the discarded one in ${Date.now() - t2}ms, workspace intact: ${JSON.stringify(r.stdout.replace("\n", " + "))}`);
+  await kept.vm.boot(kept.ws);
+  console.log("the kept one still has its file:", JSON.stringify((await kept.vm.exec("cat /usr/local/lib/pkg/mod.py", { cwd: "/work" })).stdout.trim()));
+  await bare.vm.stop(); await kept.vm.stop(); rmSync(base, { recursive: true, force: true });
+}

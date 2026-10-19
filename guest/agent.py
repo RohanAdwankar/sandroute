@@ -67,6 +67,45 @@ def _ppid(pid):
         return int(f.read().rsplit(") ", 1)[1].split()[1])
 
 
+UPPER = None      # where this guest's changes to its image land, when the host asked to watch it
+SCRATCH = "/tmp"  # throwaway space that a release loses as well
+BASELINE = {}     # what was already there when the agent started, which the pristine snapshot holds
+
+
+def _entries(root):
+    """Everything in the guest that a release could lose, as path -> (size, mtime).
+
+    The workspace is the host's and is pushed back on every wake, and bytecode caches
+    regenerate, so neither counts. What is left is real: a package installed, a file written
+    outside the workspace, a file removed from the image."""
+    out = {}
+    ws = os.path.relpath(root, "/")
+    for base in (UPPER, SCRATCH):
+        if not base or not os.path.isdir(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            rel = os.path.relpath(dirpath, base)
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"
+                           and not (base == UPPER and os.path.normpath(os.path.join(rel, d)) == ws)]
+            for name in filenames:
+                full = os.path.join(dirpath, name)
+                try:
+                    st = os.lstat(full)
+                except OSError:
+                    continue
+                out[full] = (st.st_size, st.st_mtime_ns)
+    return out
+
+
+def local_state(root):
+    """What this guest holds that is not in the pristine snapshot it was started from.
+
+    A guest with none can be thrown away on release and restored from that snapshot, which
+    writes nothing; one with some has to be snapshotted to keep it."""
+    changed = [p for p, v in _entries(root).items() if BASELINE.get(p) != v]
+    return {"files": len(changed), "sample": sorted(changed)[:5]}
+
+
 def live_processes():
     """Processes in the guest that the agent did not spawn for the request in hand.
 
@@ -139,6 +178,8 @@ def handle(root, req):
         # file timestamp, and TLS certificate validity all depend on it being right.
         time.clock_settime(time.CLOCK_REALTIME, float(req["epoch"]))
         return {"ok": True}
+    if op == "state":
+        return local_state(root)
     if op == "busy":
         procs = live_processes()
         # whatever is still running has been writing; hand that over while reporting it,
@@ -206,9 +247,14 @@ def main():
     ap.add_argument("--workspace", required=True)
     ap.add_argument("--vsock-port", type=int)
     ap.add_argument("--unix")
+    ap.add_argument("--upper", help="directory holding this guest's changes to its image")
+    ap.add_argument("--scratch", default="/tmp")
     a = ap.parse_args()
     root = os.path.normpath(a.workspace)
     os.makedirs(root, exist_ok=True)
+    global UPPER, SCRATCH, BASELINE
+    UPPER, SCRATCH = a.upper, a.scratch
+    BASELINE = _entries(root)
     if a.vsock_port:
         s = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         s.bind((socket.VMADDR_CID_ANY, a.vsock_port))

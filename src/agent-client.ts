@@ -153,6 +153,11 @@ export class AgentClient {
     this.synced = manifest(this.workspace);
   }
 
+  /** What this guest holds that a release would lose and the host cannot rebuild. */
+  state(): Promise<{ files: number; sample: string[] }> {
+    return this.request({ op: "state" });
+  }
+
   /** Asks what is still running, and collects what it has written while it ran. */
   async busy(): Promise<{ busy: boolean; procs: { pid: number; comm: string }[] }> {
     const r = await this.request({ op: "busy" });

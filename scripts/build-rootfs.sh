@@ -10,7 +10,7 @@ IMG=$HERE/rootfs.ext4
 AGENT="$REPO/guest/agent.py"
 PYV=$(python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])")
 
-rm -rf "$STAGE"; mkdir -p "$STAGE"/{bin,sbin,usr/bin,usr/lib,usr/sbin,lib,lib64,proc,sys,dev,tmp,etc,root,var/log,overlay}
+rm -rf "$STAGE"; mkdir -p "$STAGE"/{bin,sbin,usr/bin,usr/lib,usr/sbin,lib,lib64,proc,sys,dev,tmp,etc,root,var/log,overlay,.upper}
 chmod 1777 "$STAGE/tmp"
 
 BINS=(bash sh ls cat echo mkdir rmdir rm cp mv ln chmod chown sleep uname env printenv
@@ -116,6 +116,8 @@ mount -t proc proc "$R/proc"
 mount -t sysfs sysfs "$R/sys"
 mount -t devtmpfs dev "$R/dev" 2>/dev/null
 mount -t tmpfs tmpfs "$R/tmp"
+# lets the agent see what this guest has changed, so a release can tell whether it holds anything
+mount --bind /overlay/upper "$R/.upper"
 mkdir -p "$R/dev/pts"
 mount -t devpts devpts "$R/dev/pts"   # without this a guest process cannot open a terminal
 mkdir -p "$R$ws"
@@ -132,7 +134,7 @@ if [ -n "$gip" ]; then
 fi
 
 while :; do
-  chroot "$R" /usr/bin/python3 /agent.py --workspace "$ws" --vsock-port "$port"
+  chroot "$R" /usr/bin/python3 /agent.py --workspace "$ws" --vsock-port "$port" --upper /.upper
   echo "sandroute-init: agent exited $?, restarting"
   sleep 1
 done
