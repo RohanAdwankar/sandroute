@@ -11,9 +11,7 @@
    "args": {
     "pattern": "(TODO|FIXME)"
    },
-   "thinkMs": null,
-   "origMs": 65,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
@@ -21,9 +19,7 @@
     "command": "ls -a",
     "description": "List files in working directory"
    },
-   "thinkMs": 42,
-   "origMs": 23,
-   "origTier": "inprocess"
+   "thinkMs": 42
   },
   {
    "tool": "bash",
@@ -31,9 +27,7 @@
     "command": "grep -rn -E 'TODO|FIXME' . || echo \"NO MATCHES\"",
     "description": "Search recursively for TODO/FIXME comments"
    },
-   "thinkMs": 3104,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 3104
   }
  ]
 }

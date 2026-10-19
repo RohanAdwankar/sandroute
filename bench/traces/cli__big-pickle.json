@@ -11,63 +11,49 @@
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": null,
-   "origMs": 39,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*"
    },
-   "thinkMs": 251,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 251
   },
   {
    "tool": "bash",
    "args": {
     "command": "find . -type f | head -50; echo '---'; cat README.md NOTES.md"
    },
-   "thinkMs": 3325,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 3325
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-yEjWLQ/textstats/core.py"
    },
-   "thinkMs": 4603,
-   "origMs": 20,
-   "origTier": "inprocess"
+   "thinkMs": 4603
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-yEjWLQ/textstats/__init__.py"
    },
-   "thinkMs": 46,
-   "origMs": 17,
-   "origTier": "inprocess"
+   "thinkMs": 46
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-yEjWLQ/tests/test_core.py"
    },
-   "thinkMs": 291,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 291
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.claude/skills/synced/e9d6a64d-c84e-4b1d-8866-64c43c360fff_adc54845-77a3-4b0b-8410-7229a74adf47/code/SKILL.md"
    },
-   "thinkMs": 9677,
-   "origMs": 2,
-   "origTier": "inprocess"
+   "thinkMs": 9677
   },
   {
    "tool": "write",
@@ -75,27 +61,21 @@
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-yEjWLQ/textstats/__main__.py",
     "content": "\"\"\"Command line entry point: python -m textstats FILE\"\"\"\nimport sys\n\nfrom .core import count_words, longest_word, top_words\n\n\ndef main(argv=None):\n    argv = sys.argv[1:] if argv is None else argv\n    if len(argv) != 1:\n        print(\"usage: python -m textstats FILE\", file=sys.stderr)\n        return 2\n    with open(argv[0], encoding=\"utf-8\") as f:\n        text = f.read()\n    print(f\"words: {count_words(text)}\")\n    print(f\"longest word: {longest_word(text)}\")\n    print(f\"top words: {top_words(text)}\")\n    return 0\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n"
    },
-   "thinkMs": 22098,
-   "origMs": 15,
-   "origTier": "inprocess"
+   "thinkMs": 22098
   },
   {
    "tool": "bash",
    "args": {
     "command": "uv run python -m textstats README.md"
    },
-   "thinkMs": 10093,
-   "origMs": 2502,
-   "origTier": "vm"
+   "thinkMs": 10093
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m textstats README.md"
    },
-   "thinkMs": 2300,
-   "origMs": 117,
-   "origTier": "vm"
+   "thinkMs": 2300
   },
   {
    "tool": "edit",
@@ -104,9 +84,7 @@
     "oldString": "- TODO: add a command line entry point\n",
     "newString": ""
    },
-   "thinkMs": 4234,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 4234
   }
  ]
 }

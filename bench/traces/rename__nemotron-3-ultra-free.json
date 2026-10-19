@@ -11,45 +11,35 @@
    "args": {
     "pattern": "\\bcnt\\b"
    },
-   "thinkMs": null,
-   "origMs": 64,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv/textstats/core.py"
    },
-   "thinkMs": 3231,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 3231
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*test*.py"
    },
-   "thinkMs": 2154,
-   "origMs": 36,
-   "origTier": "inprocess"
+   "thinkMs": 2154
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/test*.py"
    },
-   "thinkMs": 2346,
-   "origMs": 27,
-   "origTier": "inprocess"
+   "thinkMs": 2346
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*_test.py"
    },
-   "thinkMs": 2405,
-   "origMs": 16,
-   "origTier": "inprocess"
+   "thinkMs": 2405
   },
   {
    "tool": "bash",
@@ -57,27 +47,21 @@
     "command": "find . -name \"*test*.py\" -o -name \"*_test.py\" 2>/dev/null",
     "description": "Find test files"
    },
-   "thinkMs": 2154,
-   "origMs": 7,
-   "origTier": "inprocess"
+   "thinkMs": 2154
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv/tests/test_core.py"
    },
-   "thinkMs": 2120,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 2120
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/textstats/__init__.py"
    },
-   "thinkMs": 3120,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 3120
   },
   {
    "tool": "bash",
@@ -85,18 +69,14 @@
     "description": "Find init files",
     "command": "find . -name \"__init__.py\" 2>/dev/null"
    },
-   "thinkMs": 1751,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 1751
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv/textstats/__init__.py"
    },
-   "thinkMs": 1519,
-   "origMs": 7,
-   "origTier": "inprocess"
+   "thinkMs": 1519
   },
   {
    "tool": "edit",
@@ -105,9 +85,7 @@
     "newString": "def count_tokens(text):\n    return len(tokenize(text))\n\n\ndef count_words(text):\n    return count_tokens(text)",
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv/textstats/core.py"
    },
-   "thinkMs": 5670,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 5670
   },
   {
    "tool": "bash",
@@ -115,9 +93,7 @@
     "description": "Run tests to verify the rename",
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv && python -m pytest tests/test_core.py -v"
    },
-   "thinkMs": 2462,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 2462
   },
   {
    "tool": "bash",
@@ -125,9 +101,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv && python -m unittest tests.test_core -v",
     "description": "Run tests with python unittest"
    },
-   "thinkMs": 15157,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 15157
   },
   {
    "tool": "bash",
@@ -135,9 +109,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv && python tests/test_core.py",
     "description": "Run test file directly"
    },
-   "thinkMs": 58140,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 58140
   },
   {
    "tool": "bash",
@@ -145,9 +117,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv && python -c \"from textstats import count_words; print(count_words('one two three'))\"",
     "description": "Test the import and function"
    },
-   "thinkMs": 14600,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 14600
   },
   {
    "tool": "bash",
@@ -155,18 +125,14 @@
     "description": "Test with UV",
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv && uv run python -c \"from textstats import count_words; print(count_words('one two three'))\""
    },
-   "thinkMs": 2705,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 2705
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-y0Zehv/textstats/core.py"
    },
-   "thinkMs": 5070,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 5070
   }
  ]
 }

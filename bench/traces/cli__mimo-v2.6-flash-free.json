@@ -12,63 +12,49 @@
     "command": "ls -la",
     "description": "List project files"
    },
-   "thinkMs": null,
-   "origMs": 39,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "*"
    },
-   "thinkMs": 284,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 284
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/textstats/core.py"
    },
-   "thinkMs": 2972,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 2972
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/textstats/__init__.py"
    },
-   "thinkMs": 4771,
-   "origMs": 20,
-   "origTier": "inprocess"
+   "thinkMs": 4771
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/README.md"
    },
-   "thinkMs": 203,
-   "origMs": 32,
-   "origTier": "inprocess"
+   "thinkMs": 203
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/tests/test_core.py"
    },
-   "thinkMs": -19,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": -19
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/NOTES.md"
    },
-   "thinkMs": -8,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": -8
   },
   {
    "tool": "bash",
@@ -76,9 +62,7 @@
     "command": "which uv python3; python3 --version",
     "description": "Check uv and python availability"
    },
-   "thinkMs": 39418,
-   "origMs": 2571,
-   "origTier": "vm"
+   "thinkMs": 39418
   },
   {
    "tool": "write",
@@ -86,9 +70,7 @@
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/textstats/cli.py",
     "content": "import sys\n\nfrom .core import count_words, longest_word, top_words\n\n\ndef main(argv=None):\n    argv = sys.argv[1:] if argv is None else argv\n    if len(argv) != 1:\n        print(\"usage: textstats <file>\", file=sys.stderr)\n        return 2\n    with open(argv[0], encoding=\"utf-8\") as f:\n        text = f.read()\n    print(f\"words: {count_words(text)}\")\n    print(f\"longest: {longest_word(text)}\")\n    print(\"top words:\")\n    for word, n in top_words(text, 5):\n        print(f\"  {word}: {n}\")\n    return 0\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n"
    },
-   "thinkMs": 15870,
-   "origMs": 29,
-   "origTier": "inprocess"
+   "thinkMs": 15870
   },
   {
    "tool": "write",
@@ -96,9 +78,7 @@
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hIH3F5/textstats/__main__.py",
     "content": "from .cli import main\n\nraise SystemExit(main())\n"
    },
-   "thinkMs": 1401,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1401
   },
   {
    "tool": "edit",
@@ -107,9 +87,7 @@
     "oldString": "def top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]",
     "newString": "def top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))\n    return ordered[:n]"
    },
-   "thinkMs": 11445,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 11445
   },
   {
    "tool": "bash",
@@ -117,9 +95,7 @@
     "command": "python3 -m unittest discover -s tests -v && python3 -m textstats README.md",
     "description": "Run tests and CLI on README.md"
    },
-   "thinkMs": 3197,
-   "origMs": 325,
-   "origTier": "vm"
+   "thinkMs": 3197
   },
   {
    "tool": "edit",
@@ -128,9 +104,7 @@
     "newString": "- TODO: handle empty input in top_words",
     "oldString": "- TODO: add a command line entry point\n- TODO: handle empty input in top_words"
    },
-   "thinkMs": 4442,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 4442
   }
  ]
 }

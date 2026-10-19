@@ -11,9 +11,7 @@
    "args": {
     "pattern": "TODO|FIXME"
    },
-   "thinkMs": null,
-   "origMs": 48,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
@@ -21,9 +19,7 @@
     "description": "List files in the repository",
     "command": "find . -type f -name \"*.*\" | head -50"
    },
-   "thinkMs": 2866,
-   "origMs": 35,
-   "origTier": "inprocess"
+   "thinkMs": 2866
   },
   {
    "tool": "grep",
@@ -31,9 +27,7 @@
     "pattern": "TODO|FIXME",
     "include": "*.py"
    },
-   "thinkMs": 1820,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 1820
   },
   {
    "tool": "grep",
@@ -41,9 +35,7 @@
     "include": "*.md",
     "pattern": "TODO|FIXME"
    },
-   "thinkMs": 1638,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 1638
   }
  ]
 }

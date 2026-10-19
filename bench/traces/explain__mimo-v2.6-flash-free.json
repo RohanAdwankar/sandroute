@@ -12,54 +12,42 @@
     "command": "ls -la /home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm && find /home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm -maxdepth 2 -type f | head -50",
     "description": "List repo top-level files"
    },
-   "thinkMs": null,
-   "origMs": 51,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm/README.md"
    },
-   "thinkMs": 5473,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 5473
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm/NOTES.md"
    },
-   "thinkMs": 649,
-   "origMs": 4,
-   "origTier": "inprocess"
+   "thinkMs": 649
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm/textstats/__init__.py"
    },
-   "thinkMs": 1055,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1055
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm/textstats/core.py"
    },
-   "thinkMs": 1034,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 1034
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-m6hamm/tests/test_core.py"
    },
-   "thinkMs": 597,
-   "origMs": 20,
-   "origTier": "inprocess"
+   "thinkMs": 597
   }
  ]
 }

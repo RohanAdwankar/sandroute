@@ -12,27 +12,21 @@
     "command": "ls -la /home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr",
     "description": "List files in workspace"
    },
-   "thinkMs": null,
-   "origMs": 40,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/README.md"
    },
-   "thinkMs": 4745,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 4745
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/NOTES.md"
    },
-   "thinkMs": 519,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 519
   },
   {
    "tool": "bash",
@@ -40,36 +34,28 @@
     "command": "find /home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/tests /home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/textstats -type f | head -50",
     "description": "List test and source files"
    },
-   "thinkMs": 1450,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 1450
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/textstats/core.py"
    },
-   "thinkMs": 2687,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 2687
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/textstats/__init__.py"
    },
-   "thinkMs": 509,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 509
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr/tests/test_core.py"
    },
-   "thinkMs": 448,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 448
   },
   {
    "tool": "bash",
@@ -77,9 +63,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr && python3 -m unittest discover -s tests 2>&1",
     "description": "Run the test suite"
    },
-   "thinkMs": 5585,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 5585
   },
   {
    "tool": "edit",
@@ -88,9 +72,7 @@
     "oldString": "    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])",
     "newString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)"
    },
-   "thinkMs": 7008,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 7008
   },
   {
    "tool": "bash",
@@ -98,9 +80,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-M4JTQr && python3 -m unittest discover -s tests 2>&1",
     "description": "Run the test suite to verify fix"
    },
-   "thinkMs": 15754,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 15754
   }
  ]
 }

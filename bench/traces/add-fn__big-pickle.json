@@ -11,63 +11,49 @@
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": null,
-   "origMs": 42,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*.py"
    },
-   "thinkMs": 216,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 216
   },
   {
    "tool": "bash",
    "args": {
     "command": "find . -type f | head -50; echo ---; cat README.md NOTES.md"
    },
-   "thinkMs": 3191,
-   "origMs": 34,
-   "origTier": "inprocess"
+   "thinkMs": 3191
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-4aHkvf/textstats/core.py"
    },
-   "thinkMs": 5453,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 5453
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-4aHkvf/tests/test_core.py"
    },
-   "thinkMs": 417,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 417
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-4aHkvf/textstats/__init__.py"
    },
-   "thinkMs": 219,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 219
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests 2>&1 | tail -20"
    },
-   "thinkMs": 3305,
-   "origMs": 2689,
-   "origTier": "vm"
+   "thinkMs": 3305
   },
   {
    "tool": "edit",
@@ -76,18 +62,14 @@
     "oldString": "def longest_word(text):",
     "newString": "def word_frequencies(text):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    return counts\n\n\ndef longest_word(text):"
    },
-   "thinkMs": 6019,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 6019
   },
   {
    "tool": "bash",
    "args": {
     "command": "command -v uv && uv --version"
    },
-   "thinkMs": 176,
-   "origMs": 81,
-   "origTier": "vm"
+   "thinkMs": 176
   },
   {
    "tool": "edit",
@@ -96,9 +78,7 @@
     "oldString": "from .core import count_words, longest_word, tokenize, top_words",
     "newString": "from .core import count_words, longest_word, tokenize, top_words, word_frequencies"
    },
-   "thinkMs": 2881,
-   "origMs": 431,
-   "origTier": "inprocess"
+   "thinkMs": 2881
   },
   {
    "tool": "edit",
@@ -107,9 +87,7 @@
     "oldString": "from textstats import count_words, longest_word, tokenize, top_words",
     "newString": "from textstats import count_words, longest_word, tokenize, top_words, word_frequencies"
    },
-   "thinkMs": 269,
-   "origMs": 502,
-   "origTier": "inprocess"
+   "thinkMs": 269
   },
   {
    "tool": "edit",
@@ -118,9 +96,7 @@
     "newString": "def top_words(text, n=3):\n    counts = word_frequencies(text)\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]",
     "oldString": "def top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]"
    },
-   "thinkMs": 2906,
-   "origMs": 498,
-   "origTier": "inprocess"
+   "thinkMs": 2906
   },
   {
    "tool": "edit",
@@ -129,18 +105,14 @@
     "newString": "    def test_top_words_most_common_first(self):\n        text = \"red red red blue blue green\"\n        self.assertEqual(top_words(text, 2), [(\"red\", 3), (\"blue\", 2)])\n\n    def test_word_frequencies(self):\n        self.assertEqual(\n            word_frequencies(\"The the THE cat sat\"),\n            {\"the\": 3, \"cat\": 1, \"sat\": 1},\n        )\n\n    def test_word_frequencies_empty_text(self):\n        self.assertEqual(word_frequencies(\"\"), {})",
     "oldString": "    def test_top_words_most_common_first(self):\n        text = \"red red red blue blue green\"\n        self.assertEqual(top_words(text, 2), [(\"red\", 3), (\"blue\", 2)])"
    },
-   "thinkMs": 1058,
-   "origMs": 686,
-   "origTier": "inprocess"
+   "thinkMs": 1058
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -25"
    },
-   "thinkMs": 3980,
-   "origMs": 117,
-   "origTier": "vm"
+   "thinkMs": 3980
   },
   {
    "tool": "edit",
@@ -149,18 +121,14 @@
     "newString": "def top_words(text, n=3):\n    counts = word_frequencies(text)\n    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)\n    return ordered[:n]",
     "oldString": "def top_words(text, n=3):\n    counts = word_frequencies(text)\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]"
    },
-   "thinkMs": 6471,
-   "origMs": 436,
-   "origTier": "inprocess"
+   "thinkMs": 6471
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -15"
    },
-   "thinkMs": 2134,
-   "origMs": 130,
-   "origTier": "vm"
+   "thinkMs": 2134
   }
  ]
 }

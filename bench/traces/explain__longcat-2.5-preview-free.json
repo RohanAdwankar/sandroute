@@ -11,63 +11,49 @@
    "args": {
     "command": "ls -la /home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX"
    },
-   "thinkMs": null,
-   "origMs": 40,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX/README.md"
    },
-   "thinkMs": 6062,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 6062
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX/NOTES.md"
    },
-   "thinkMs": 1193,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 1193
   },
   {
    "tool": "bash",
    "args": {
     "command": "find /home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX -type f | head -50"
    },
-   "thinkMs": 831,
-   "origMs": 29,
-   "origTier": "inprocess"
+   "thinkMs": 831
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX/textstats/__init__.py"
    },
-   "thinkMs": 4407,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 4407
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX/textstats/core.py"
    },
-   "thinkMs": 491,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 491
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-lpKgOX/tests/test_core.py"
    },
-   "thinkMs": 466,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 466
   }
  ]
 }

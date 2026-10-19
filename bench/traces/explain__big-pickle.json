@@ -11,27 +11,21 @@
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": null,
-   "origMs": 51,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
    "args": {
     "command": "cat README.md NOTES.md; echo ---; find textstats tests -type f | head -50"
    },
-   "thinkMs": 1495,
-   "origMs": 27,
-   "origTier": "inprocess"
+   "thinkMs": 1495
   },
   {
    "tool": "bash",
    "args": {
     "command": "cat textstats/core.py; echo ===INIT===; cat textstats/__init__.py; echo ===TEST===; cat tests/test_core.py"
    },
-   "thinkMs": 1342,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1342
   }
  ]
 }

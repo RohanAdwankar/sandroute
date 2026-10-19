@@ -11,72 +11,56 @@
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": null,
-   "origMs": 40,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
    "args": {
     "command": "ls textstats tests; cat README.md NOTES.md"
    },
-   "thinkMs": 1917,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 1917
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-w0entD/textstats/core.py"
    },
-   "thinkMs": 2131,
-   "origMs": 24,
-   "origTier": "inprocess"
+   "thinkMs": 2131
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-w0entD/textstats/__init__.py"
    },
-   "thinkMs": -5,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": -5
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 --version"
    },
-   "thinkMs": 4048,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 4048
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 --version"
    },
-   "thinkMs": 1122,
-   "origMs": 18,
-   "origTier": "inprocess"
+   "thinkMs": 1122
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 --version && python3 -m unittest discover -s tests"
    },
-   "thinkMs": 1857,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 1857
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-w0entD/tests/test_core.py"
    },
-   "thinkMs": 3808,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 3808
   },
   {
    "tool": "edit",
@@ -85,9 +69,7 @@
     "oldString": "\"\"\"Small text statistics helpers.\"\"\"\nimport re",
     "newString": "\"\"\"Small text statistics helpers.\"\"\"\nfrom __future__ import annotations\n\nimport re"
    },
-   "thinkMs": 2851,
-   "origMs": 10,
-   "origTier": "inprocess"
+   "thinkMs": 2851
   },
   {
    "tool": "edit",
@@ -96,9 +78,7 @@
     "oldString": "def tokenize(text):",
     "newString": "def tokenize(text: str) -> list[str]:"
    },
-   "thinkMs": 229,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 229
   },
   {
    "tool": "edit",
@@ -107,9 +87,7 @@
     "oldString": "def cnt(text):",
     "newString": "def cnt(text: str) -> int:"
    },
-   "thinkMs": 302,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 302
   },
   {
    "tool": "edit",
@@ -118,9 +96,7 @@
     "oldString": "def count_words(text):",
     "newString": "def count_words(text: str) -> int:"
    },
-   "thinkMs": 285,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 285
   },
   {
    "tool": "edit",
@@ -129,9 +105,7 @@
     "oldString": "def longest_word(text):",
     "newString": "def longest_word(text: str) -> str:"
    },
-   "thinkMs": 240,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 240
   },
   {
    "tool": "edit",
@@ -140,27 +114,21 @@
     "oldString": "def top_words(text, n=3):",
     "newString": "def top_words(text: str, n: int = 3) -> list[tuple[str, int]]:"
    },
-   "thinkMs": 367,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 367
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 --version && python3 -m unittest discover -s tests -v"
    },
-   "thinkMs": 1830,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1830
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-w0entD/textstats/core.py"
    },
-   "thinkMs": 2146,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 2146
   }
  ]
 }

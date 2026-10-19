@@ -12,36 +12,28 @@
     "command": "ls -la",
     "description": "List files in working directory"
    },
-   "thinkMs": null,
-   "origMs": 41,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/README*"
    },
-   "thinkMs": 263,
-   "origMs": 4114,
-   "origTier": "vm"
+   "thinkMs": 263
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-YZUZec/README.md"
    },
-   "thinkMs": 3863,
-   "origMs": 15,
-   "origTier": "inprocess"
+   "thinkMs": 3863
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-YZUZec/NOTES.md"
    },
-   "thinkMs": 771,
-   "origMs": 10,
-   "origTier": "inprocess"
+   "thinkMs": 771
   },
   {
    "tool": "bash",
@@ -49,36 +41,28 @@
     "command": "find textstats tests -type f | head -50",
     "description": "List project source and test files"
    },
-   "thinkMs": 701,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 701
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-YZUZec/textstats/core.py"
    },
-   "thinkMs": 106330,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 106330
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-YZUZec/textstats/__init__.py"
    },
-   "thinkMs": 666,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 666
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-YZUZec/tests/test_core.py"
    },
-   "thinkMs": 557,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 557
   },
   {
    "tool": "bash",
@@ -86,9 +70,7 @@
     "command": "python3 -m unittest discover -s tests -v 2>&1; echo \"---\"; python3 -c \"\nfrom textstats import count_words, longest_word, tokenize, top_words\nprint(count_words('one two three'))\nprint(longest_word('a bb ccc'))\nprint(tokenize('Hello, World'))\nprint(top_words('red red red blue blue green', 2))\n\"",
     "description": "Run tests and try basic API examples"
    },
-   "thinkMs": 6751,
-   "origMs": 237,
-   "origTier": "vm"
+   "thinkMs": 6751
   },
   {
    "tool": "edit",
@@ -97,9 +79,7 @@
     "oldString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1])",
     "newString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)"
    },
-   "thinkMs": 12709,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 12709
   },
   {
    "tool": "edit",
@@ -108,9 +88,7 @@
     "newString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)",
     "oldString": "    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)"
    },
-   "thinkMs": 3952,
-   "origMs": 7,
-   "origTier": "inprocess"
+   "thinkMs": 3952
   },
   {
    "tool": "edit",
@@ -119,9 +97,7 @@
     "newString": "# textstats\n\nTiny helpers for counting and ranking words in a piece of text.\n\n## Usage\n\n```python\nfrom textstats import count_words, longest_word, tokenize, top_words\n\ntext = \"the cat sat on the mat and the cat liked the mat\"\n\ncount_words(text)\n# 12\n\nlongest_word(text)\n# 'liked'\n\ntokenize(\"Hello, World\")\n# ['hello', 'world']\n\ntop_words(text, n=2)\n# [('the', 4), ('cat', 2)]\n```\n\nRun the tests with `python3 -m unittest discover -s tests`.",
     "oldString": "# textstats\n\nTiny helpers for counting and ranking words in a piece of text.\n\nRun the tests with `python3 -m unittest discover -s tests`."
    },
-   "thinkMs": 7758,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 7758
   },
   {
    "tool": "bash",
@@ -129,9 +105,7 @@
     "command": "python3 -c \"\nfrom textstats import count_words, longest_word, tokenize, top_words\n\ntext = 'the cat sat on the mat and the cat liked the mat'\nprint(count_words(text))\nprint(longest_word(text))\nprint(tokenize('Hello, World'))\nprint(top_words(text, n=2))\n\" && python3 -m unittest discover -s tests",
     "description": "Verify README examples and run tests"
    },
-   "thinkMs": 6111,
-   "origMs": 189,
-   "origTier": "vm"
+   "thinkMs": 6111
   }
  ]
 }

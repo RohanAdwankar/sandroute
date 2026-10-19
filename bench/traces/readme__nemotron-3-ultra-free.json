@@ -11,27 +11,21 @@
    "args": {
     "pattern": "README*"
    },
-   "thinkMs": null,
-   "origMs": 49,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/README.md"
    },
-   "thinkMs": 1995,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 1995
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*.py"
    },
-   "thinkMs": 2121,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 2121
   },
   {
    "tool": "bash",
@@ -39,18 +33,14 @@
     "description": "List all files in project directory",
     "command": "ls -la"
    },
-   "thinkMs": 4695,
-   "origMs": 24,
-   "origTier": "inprocess"
+   "thinkMs": 4695
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "textstats/**/*"
    },
-   "thinkMs": 10253,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 10253
   },
   {
    "tool": "bash",
@@ -58,36 +48,28 @@
     "command": "ls -la textstats/",
     "description": "List textstats directory contents"
    },
-   "thinkMs": 1588,
-   "origMs": 18,
-   "origTier": "inprocess"
+   "thinkMs": 1588
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/textstats/__init__.py"
    },
-   "thinkMs": 2909,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 2909
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/textstats/core.py"
    },
-   "thinkMs": 302,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 302
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "tests/**/*"
    },
-   "thinkMs": 1650,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 1650
   },
   {
    "tool": "bash",
@@ -95,18 +77,14 @@
     "command": "ls -la tests/",
     "description": "List tests directory contents"
    },
-   "thinkMs": 1941,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 1941
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/tests/test_core.py"
    },
-   "thinkMs": 2228,
-   "origMs": 7,
-   "origTier": "inprocess"
+   "thinkMs": 2228
   },
   {
    "tool": "bash",
@@ -114,9 +92,7 @@
     "command": "python3 -m unittest discover -s tests",
     "description": "Run tests to verify they pass"
    },
-   "thinkMs": 4108,
-   "origMs": 2609,
-   "origTier": "vm"
+   "thinkMs": 4108
   },
   {
    "tool": "edit",
@@ -125,9 +101,7 @@
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/textstats/core.py",
     "newString": "ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)\n    return ordered[:n]"
    },
-   "thinkMs": 11710,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 11710
   },
   {
    "tool": "bash",
@@ -135,9 +109,7 @@
     "description": "Run tests again to verify fix",
     "command": "python3 -m unittest discover -s tests"
    },
-   "thinkMs": 49826,
-   "origMs": 219,
-   "origTier": "vm"
+   "thinkMs": 49826
   },
   {
    "tool": "bash",
@@ -145,9 +117,7 @@
     "command": "python3 -c \"\nfrom textstats import count_words, longest_word, tokenize, top_words\n\ntext = 'The quick brown fox jumps over the lazy dog'\n\nprint('tokenize:', tokenize(text))\nprint('count_words:', count_words(text))\nprint('longest_word:', longest_word(text))\nprint('top_words:', top_words(text, 3))\n\"",
     "description": "Test API examples"
    },
-   "thinkMs": 2774,
-   "origMs": 91,
-   "origTier": "vm"
+   "thinkMs": 2774
   },
   {
    "tool": "edit",
@@ -156,9 +126,7 @@
     "oldString": "# textstats\n\nTiny helpers for counting and ranking words in a piece of text.\n\nRun the tests with `python3 -m unittest discover -s tests`.",
     "newString": "# textstats\n\nTiny helpers for counting and ranking words in a piece of text.\n\n## Usage\n\n```python\nfrom textstats import count_words, longest_word, tokenize, top_words\n\ntext = \"The quick brown fox jumps over the lazy dog\"\n\ntokenize(text)\n# ['the', 'quick', 'brown', 'fox', 'jumps', 'over', 'the', 'lazy', 'dog']\n\ncount_words(text)\n# 9\n\nlongest_word(text)\n# 'quick'\n\ntop_words(text, 3)\n# [('the', 2), ('quick', 1), ('brown', 1)]\n```\n\nRun the tests with `python3 -m unittest discover -s tests`."
    },
-   "thinkMs": 3429,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 3429
   },
   {
    "tool": "bash",
@@ -166,18 +134,14 @@
     "description": "Run tests to verify everything works",
     "command": "python3 -m unittest discover -s tests"
    },
-   "thinkMs": 2172,
-   "origMs": 132,
-   "origTier": "vm"
+   "thinkMs": 2172
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-xXoFYK/README.md"
    },
-   "thinkMs": 1845,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1845
   }
  ]
 }

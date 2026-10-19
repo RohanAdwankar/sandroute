@@ -10,6 +10,8 @@ import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { getCommandNames } from "just-bash";
+import { classify } from "../src/router.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const A = process.env.SANDROUTE_ASSETS ?? "/home/rohan/fcassets";
@@ -45,11 +47,12 @@ async function once(task: { id: string; prompt: string }, model: string) {
   });
   const lines = (f: string) => (existsSync(f) ? readFileSync(f, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
   const tr = lines(trace), lg = lines(log).filter((l) => l.command);
-  // the trace and the routing log hold one entry per call, in the same order
+  // The trace and the routing log hold one entry per call, in the same order, until a call
+  // produces none or two. The log is therefore only trusted for how long a call took, which
+  // is small next to the model's think time, and never for which tier a call used.
   const calls = tr.map((c, i) => ({
     tool: c.tool, args: c.args,
     thinkMs: i === 0 ? null : c.t - (tr[i - 1].t + (lg[i - 1]?.ms ?? 0)),
-    origMs: lg[i]?.ms ?? null, origTier: lg[i]?.tier ?? null,
   }));
   const rec = { task: task.id, prompt: task.prompt, model, exit: code, wallMs: Date.now() - t0, workspace: ws, calls };
   // A turn that stalled or errored is not how a person uses an agent, so it stays out of the
@@ -57,7 +60,9 @@ async function once(task: { id: string; prompt: string }, model: string) {
   const ok = code === 0 && calls.length > 0;
   mkdirSync(path.join(out, "failed"), { recursive: true });
   writeFileSync(path.join(ok ? out : path.join(out, "failed"), `${task.id}__${model}.json`), JSON.stringify(rec, null, 1));
-  const vm = calls.filter((c) => c.origTier === "vm").length;
+  // which calls need a machine is decided by the router, on the command, not read from a log
+  const known = new Set(getCommandNames());
+  const vm = calls.filter((c) => c.tool === "bash" && classify(known, c.args.command, ws).tier === "vm").length;
   console.log(`${task.id.padEnd(9)} ${model.padEnd(26)} exit=${String(code).padEnd(4)} ${(rec.wallMs / 1000).toFixed(0).padStart(4)}s  ${String(calls.length).padStart(2)} calls, ${vm} needed the machine${code === 0 ? "" : "   (discarded)"}`);
   return calls.length;
 }

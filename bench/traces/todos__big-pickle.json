@@ -11,27 +11,21 @@
    "args": {
     "pattern": "(TODO|FIXME)"
    },
-   "thinkMs": null,
-   "origMs": 56,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": 1610,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 1610
   },
   {
    "tool": "bash",
    "args": {
     "command": "grep -rn -E \"TODO|FIXME\" . || echo \"no matches\""
    },
-   "thinkMs": 2091,
-   "origMs": 24,
-   "origTier": "inprocess"
+   "thinkMs": 2091
   }
  ]
 }

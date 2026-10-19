@@ -11,9 +11,7 @@
    "args": {
     "pattern": "**/*.py"
    },
-   "thinkMs": null,
-   "origMs": 52,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
@@ -21,18 +19,14 @@
     "command": "ls -la",
     "description": "List files in project directory"
    },
-   "thinkMs": 1553,
-   "origMs": 16,
-   "origTier": "inprocess"
+   "thinkMs": 1553
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*"
    },
-   "thinkMs": 1266,
-   "origMs": 23,
-   "origTier": "inprocess"
+   "thinkMs": 1266
   },
   {
    "tool": "bash",
@@ -40,36 +34,28 @@
     "description": "Find Python files",
     "command": "find . -type f -name \"*.py\" 2>/dev/null"
    },
-   "thinkMs": 3397,
-   "origMs": 23,
-   "origTier": "inprocess"
+   "thinkMs": 3397
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B/textstats/core.py"
    },
-   "thinkMs": 1378,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 1378
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B/tests/test_core.py"
    },
-   "thinkMs": 1621,
-   "origMs": 5,
-   "origTier": "inprocess"
+   "thinkMs": 1621
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B/textstats/__init__.py"
    },
-   "thinkMs": 2879,
-   "origMs": 15,
-   "origTier": "inprocess"
+   "thinkMs": 2879
   },
   {
    "tool": "edit",
@@ -78,9 +64,7 @@
     "oldString": "def top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]",
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B/textstats/core.py"
    },
-   "thinkMs": 8099,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 8099
   },
   {
    "tool": "edit",
@@ -89,9 +73,7 @@
     "oldString": "from .core import count_words, longest_word, tokenize, top_words",
     "newString": "from .core import count_words, longest_word, tokenize, top_words, word_frequencies"
    },
-   "thinkMs": 2965,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 2965
   },
   {
    "tool": "edit",
@@ -100,9 +82,7 @@
     "newString": "from textstats import count_words, longest_word, tokenize, top_words, word_frequencies",
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B/tests/test_core.py"
    },
-   "thinkMs": 3966,
-   "origMs": 7,
-   "origTier": "inprocess"
+   "thinkMs": 3966
   },
   {
    "tool": "edit",
@@ -111,9 +91,7 @@
     "oldString": "def test_top_words_most_common_first(self):\n        text = \"red red red blue blue green\"\n        self.assertEqual(top_words(text, 2), [(\"red\", 3), (\"blue\", 2)])\n\n\nif __name__ == \"__main__\":\n    unittest.main()",
     "newString": "def test_top_words_most_common_first(self):\n        text = \"red red red blue blue green\"\n        self.assertEqual(top_words(text, 2), [(\"red\", 3), (\"blue\", 2)])\n\n    def test_word_frequencies(self):\n        text = \"a b a c b a\"\n        self.assertEqual(word_frequencies(text), {\"a\": 3, \"b\": 2, \"c\": 1})\n\n\nif __name__ == \"__main__\":\n    unittest.main()"
    },
-   "thinkMs": 3463,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 3463
   },
   {
    "tool": "bash",
@@ -121,9 +99,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B && python -m pytest tests/ -v",
     "description": "Run tests"
    },
-   "thinkMs": 1420,
-   "origMs": 2470,
-   "origTier": "vm"
+   "thinkMs": 1420
   },
   {
    "tool": "bash",
@@ -131,9 +107,7 @@
     "description": "Run tests with python3",
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B && python3 -m pytest tests/ -v"
    },
-   "thinkMs": 3323,
-   "origMs": 109,
-   "origTier": "vm"
+   "thinkMs": 3323
   },
   {
    "tool": "bash",
@@ -141,9 +115,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B && python3 -m unittest tests.test_core -v",
     "description": "Run tests with unittest"
    },
-   "thinkMs": 1964,
-   "origMs": 167,
-   "origTier": "vm"
+   "thinkMs": 1964
   },
   {
    "tool": "bash",
@@ -151,9 +123,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-9Kcg9B && python3 -m unittest tests.test_core.CoreTests.test_word_frequencies -v",
     "description": "Run only the new test"
    },
-   "thinkMs": 3706,
-   "origMs": 233,
-   "origTier": "vm"
+   "thinkMs": 3706
   }
  ]
 }

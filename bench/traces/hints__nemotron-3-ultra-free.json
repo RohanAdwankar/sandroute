@@ -11,9 +11,7 @@
    "args": {
     "pattern": "**/*.py"
    },
-   "thinkMs": null,
-   "origMs": 67,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
@@ -21,9 +19,7 @@
     "command": "ls -la",
     "description": "List files in project directory"
    },
-   "thinkMs": 1942,
-   "origMs": 23,
-   "origTier": "inprocess"
+   "thinkMs": 1942
   },
   {
    "tool": "bash",
@@ -31,27 +27,21 @@
     "description": "List textstats directory",
     "command": "ls -la textstats/"
    },
-   "thinkMs": 1802,
-   "origMs": 22,
-   "origTier": "inprocess"
+   "thinkMs": 1802
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hyHTId/textstats/__init__.py"
    },
-   "thinkMs": 1644,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 1644
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hyHTId/textstats/core.py"
    },
-   "thinkMs": 495,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 495
   },
   {
    "tool": "edit",
@@ -60,18 +50,14 @@
     "oldString": "\"\"\"Small text statistics helpers.\"\"\"\nimport re\n\n# TODO: support unicode word characters\nWORD = re.compile(r\"[A-Za-z']+\")\n\n\ndef tokenize(text):\n    return [w.lower() for w in WORD.findall(text)]\n\n\ndef cnt(text):\n    # TODO: rename this, nobody knows what cnt means\n    return len(tokenize(text))\n\n\ndef count_words(text):\n    return cnt(text)\n\n\ndef longest_word(text):\n    words = tokenize(text)\n    if not words:\n        return \"\"\n    return max(words, key=len)\n\n\ndef top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]",
     "newString": "\"\"\"Small text statistics helpers.\"\"\"\nimport re\nfrom collections.abc import Iterator\n\n\n# TODO: support unicode word characters\nWORD = re.compile(r\"[A-Za-z']+\")\n\n\ndef tokenize(text: str) -> list[str]:\n    return [w.lower() for w in WORD.findall(text)]\n\n\ndef cnt(text: str) -> int:\n    # TODO: rename this, nobody knows what cnt means\n    return len(tokenize(text))\n\n\ndef count_words(text: str) -> int:\n    return cnt(text)\n\n\ndef longest_word(text: str) -> str:\n    words = tokenize(text)\n    if not words:\n        return \"\"\n    return max(words, key=len)\n\n\ndef top_words(text: str, n: int = 3) -> list[tuple[str, int]]:\n    counts: dict[str, int] = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]"
    },
-   "thinkMs": 6131,
-   "origMs": 16,
-   "origTier": "inprocess"
+   "thinkMs": 6131
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hyHTId/textstats/core.py"
    },
-   "thinkMs": 1785,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 1785
   }
  ]
 }

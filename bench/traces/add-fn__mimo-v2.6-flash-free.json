@@ -11,72 +11,56 @@
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": null,
-   "origMs": 69,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "glob",
    "args": {
     "pattern": "**/*.py"
    },
-   "thinkMs": -13,
-   "origMs": 49,
-   "origTier": "inprocess"
+   "thinkMs": -13
   },
   {
    "tool": "bash",
    "args": {
     "command": "find . -type f | head -50; echo \"---\"; cat README.md NOTES.md"
    },
-   "thinkMs": 2758,
-   "origMs": 21,
-   "origTier": "inprocess"
+   "thinkMs": 2758
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-V90r9f/textstats/core.py"
    },
-   "thinkMs": 2128,
-   "origMs": 6,
-   "origTier": "inprocess"
+   "thinkMs": 2128
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-V90r9f/tests/test_core.py"
    },
-   "thinkMs": 227,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 227
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-V90r9f/textstats/__init__.py"
    },
-   "thinkMs": 2846,
-   "origMs": 17,
-   "origTier": "inprocess"
+   "thinkMs": 2846
   },
   {
    "tool": "bash",
    "args": {
     "command": "uv run --no-project python3 -m unittest discover -s tests 2>&1 | tail -20 || python3 -m unittest discover -s tests 2>&1 | tail -20"
    },
-   "thinkMs": 445,
-   "origMs": 2890,
-   "origTier": "vm"
+   "thinkMs": 445
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests 2>&1 | tail -20; which python3; python3 -c \"import uv\" 2>&1"
    },
-   "thinkMs": 4719,
-   "origMs": 506,
-   "origTier": "vm"
+   "thinkMs": 4719
   },
   {
    "tool": "edit",
@@ -85,9 +69,7 @@
     "oldString": "def longest_word(text):",
     "newString": "def word_frequencies(text):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    return counts\n\n\ndef longest_word(text):"
    },
-   "thinkMs": 8990,
-   "origMs": 19,
-   "origTier": "inprocess"
+   "thinkMs": 8990
   },
   {
    "tool": "edit",
@@ -96,9 +78,7 @@
     "oldString": "from .core import count_words, longest_word, tokenize, top_words",
     "newString": "from .core import count_words, longest_word, tokenize, top_words, word_frequencies"
    },
-   "thinkMs": 492,
-   "origMs": 19,
-   "origTier": "inprocess"
+   "thinkMs": 492
   },
   {
    "tool": "edit",
@@ -107,9 +87,7 @@
     "newString": "def top_words(text, n=3):\n    ordered = sorted(word_frequencies(text).items(), key=lambda kv: kv[1], reverse=True)\n    return ordered[:n]",
     "oldString": "def top_words(text, n=3):\n    counts = {}\n    for w in tokenize(text):\n        counts[w] = counts.get(w, 0) + 1\n    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]"
    },
-   "thinkMs": 4580,
-   "origMs": 11,
-   "origTier": "inprocess"
+   "thinkMs": 4580
   },
   {
    "tool": "edit",
@@ -118,9 +96,7 @@
     "newString": "from textstats import count_words, longest_word, tokenize, top_words, word_frequencies",
     "oldString": "from textstats import count_words, longest_word, tokenize, top_words"
    },
-   "thinkMs": 1165,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1165
   },
   {
    "tool": "edit",
@@ -129,18 +105,14 @@
     "newString": "    def test_word_frequencies(self):\n        self.assertEqual(\n            word_frequencies(\"Dog cat dog. CAT!\"),\n            {\"dog\": 2, \"cat\": 2},\n        )\n\n    def test_word_frequencies_empty(self):\n        self.assertEqual(word_frequencies(\"\"), {})\n\n    def test_top_words_most_common_first(self):",
     "oldString": "    def test_top_words_most_common_first(self):"
    },
-   "thinkMs": 3963,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": 3963
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -20"
    },
-   "thinkMs": 3278,
-   "origMs": 139,
-   "origTier": "vm"
+   "thinkMs": 3278
   }
  ]
 }

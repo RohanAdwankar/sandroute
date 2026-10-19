@@ -11,90 +11,70 @@
    "args": {
     "command": "pwd && ls -la"
    },
-   "thinkMs": null,
-   "origMs": 63,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41/README.md"
    },
-   "thinkMs": 1336,
-   "origMs": 19,
-   "origTier": "inprocess"
+   "thinkMs": 1336
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41/NOTES.md"
    },
-   "thinkMs": 82,
-   "origMs": 17,
-   "origTier": "inprocess"
+   "thinkMs": 82
   },
   {
    "tool": "bash",
    "args": {
     "command": "find /home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41 -type f | head -50"
    },
-   "thinkMs": 70,
-   "origMs": 33,
-   "origTier": "inprocess"
+   "thinkMs": 70
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41/textstats/core.py"
    },
-   "thinkMs": 1888,
-   "origMs": 33,
-   "origTier": "inprocess"
+   "thinkMs": 1888
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41/tests/test_core.py"
    },
-   "thinkMs": -4,
-   "origMs": 14,
-   "origTier": "inprocess"
+   "thinkMs": -4
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41/textstats/__init__.py"
    },
-   "thinkMs": 139,
-   "origMs": 20,
-   "origTier": "inprocess"
+   "thinkMs": 139
   },
   {
    "tool": "bash",
    "args": {
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41 && python3 -m unittest discover -s tests 2>&1 | tail -40"
    },
-   "thinkMs": 106,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 106
   },
   {
    "tool": "bash",
    "args": {
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41 && python3 -m unittest discover -s tests 2>&1 | tail -40"
    },
-   "thinkMs": 1669,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1669
   },
   {
    "tool": "bash",
    "args": {
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41 && python3 -m unittest discover -s tests 2>&1 | tail -20; echo \"EXIT:$?\""
    },
-   "thinkMs": 1940,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1940
   },
   {
    "tool": "edit",
@@ -103,9 +83,7 @@
     "oldString": "    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])",
     "newString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)"
    },
-   "thinkMs": 2129,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 2129
   },
   {
    "tool": "bash",
@@ -113,9 +91,7 @@
     "command": "cd /home/rohan/.local/share/oxroute/tmp/trace-ws-hAHM41 && python3 -m unittest discover -s tests 2>&1 | tail -20; echo \"EXIT:${PIPESTATUS[0]}\"",
     "timeout": 60000
    },
-   "thinkMs": 1858,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1858
   }
  ]
 }

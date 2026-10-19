@@ -11,117 +11,91 @@
    "args": {
     "pattern": "\\bcnt\\b"
    },
-   "thinkMs": null,
-   "origMs": 67,
-   "origTier": "inprocess"
+   "thinkMs": null
   },
   {
    "tool": "bash",
    "args": {
     "command": "ls -la"
    },
-   "thinkMs": 110,
-   "origMs": 16,
-   "origTier": "inprocess"
+   "thinkMs": 110
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/textstats/core.py"
    },
-   "thinkMs": 1413,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 1413
   },
   {
    "tool": "bash",
    "args": {
     "command": "ls -R tests textstats; cat README.md NOTES.md"
    },
-   "thinkMs": 125,
-   "origMs": 25,
-   "origTier": "inprocess"
+   "thinkMs": 125
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/tests/test_core.py"
    },
-   "thinkMs": 2074,
-   "origMs": 4,
-   "origTier": "inprocess"
+   "thinkMs": 2074
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/textstats/__init__.py"
    },
-   "thinkMs": 160,
-   "origMs": 13,
-   "origTier": "inprocess"
+   "thinkMs": 160
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -20"
    },
-   "thinkMs": 2749,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": 2749
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -20"
    },
-   "thinkMs": 2299,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 2299
   },
   {
    "tool": "bash",
    "args": {
     "command": "echo hi"
    },
-   "thinkMs": 1522,
-   "origMs": 10024,
-   "origTier": "inprocess"
+   "thinkMs": 1522
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -20"
    },
-   "thinkMs": -8156,
-   "origMs": 8,
-   "origTier": "inprocess"
+   "thinkMs": -8156
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -V"
    },
-   "thinkMs": 2077,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 2077
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests 2>&1"
    },
-   "thinkMs": 1471,
-   "origMs": 9,
-   "origTier": "inprocess"
+   "thinkMs": 1471
   },
   {
    "tool": "bash",
    "args": {
     "command": "sleep 2; python3 -c \"print(1)\""
    },
-   "thinkMs": 854,
-   "origMs": 12,
-   "origTier": "inprocess"
+   "thinkMs": 854
   },
   {
    "tool": "edit",
@@ -130,90 +104,70 @@
     "oldString": "def cnt(text):\n    # TODO: rename this, nobody knows what cnt means\n    return len(tokenize(text))\n\n\ndef count_words(text):\n    return cnt(text)",
     "newString": "def word_count(text):\n    return len(tokenize(text))\n\n\ndef count_words(text):\n    return word_count(text)"
    },
-   "thinkMs": 1650,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1650
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1 | tail -20"
    },
-   "thinkMs": 849,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 849
   },
   {
    "tool": "bash",
    "args": {
     "command": "sleep 5 && python3 -m unittest discover -s tests 2>&1"
    },
-   "thinkMs": 903,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 903
   },
   {
    "tool": "bash",
    "args": {
     "command": "ls tests && which python3"
    },
-   "thinkMs": 4237,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 4237
   },
   {
    "tool": "bash",
    "args": {
     "command": "sleep 10; echo ok"
    },
-   "thinkMs": 934,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 934
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v"
    },
-   "thinkMs": 11527,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 11527
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/tests/test_core.py"
    },
-   "thinkMs": 2277,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 2277
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v; echo \"EXIT:$?\""
    },
-   "thinkMs": 4803,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 4803
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/textstats/core.py"
    },
-   "thinkMs": 7358,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 7358
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v"
    },
-   "thinkMs": 915,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 915
   },
   {
    "tool": "edit",
@@ -222,36 +176,28 @@
     "oldString": "    # FIXME: this should be most common first\n    ordered = sorted(counts.items(), key=lambda kv: kv[1])\n    return ordered[:n]",
     "newString": "    ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)\n    return ordered[:n]"
    },
-   "thinkMs": 3512,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 3512
   },
   {
    "tool": "bash",
    "args": {
     "command": "python3 -m unittest discover -s tests -v 2>&1"
    },
-   "thinkMs": 938,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 938
   },
   {
    "tool": "bash",
    "args": {
     "command": "uv run python -m unittest discover -s tests -v 2>&1"
    },
-   "thinkMs": 1559,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1559
   },
   {
    "tool": "read",
    "args": {
     "filePath": "/home/rohan/.local/share/oxroute/tmp/trace-ws-70ERQt/textstats/core.py"
    },
-   "thinkMs": 1902,
-   "origMs": null,
-   "origTier": null
+   "thinkMs": 1902
   }
  ]
 }
