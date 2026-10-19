@@ -52,8 +52,11 @@ async function once(task: { id: string; prompt: string }, model: string) {
     origMs: lg[i]?.ms ?? null, origTier: lg[i]?.tier ?? null,
   }));
   const rec = { task: task.id, prompt: task.prompt, model, exit: code, wallMs: Date.now() - t0, workspace: ws, calls };
-  // a turn that stalled or errored is not how a person uses an agent, so it is not kept
-  if (code === 0 && calls.length > 0) writeFileSync(path.join(out, `${task.id}__${model}.json`), JSON.stringify(rec, null, 1));
+  // A turn that stalled or errored is not how a person uses an agent, so it stays out of the
+  // corpus. It is kept apart, because why it failed is often the most useful thing recorded.
+  const ok = code === 0 && calls.length > 0;
+  mkdirSync(path.join(out, "failed"), { recursive: true });
+  writeFileSync(path.join(ok ? out : path.join(out, "failed"), `${task.id}__${model}.json`), JSON.stringify(rec, null, 1));
   const vm = calls.filter((c) => c.origTier === "vm").length;
   console.log(`${task.id.padEnd(9)} ${model.padEnd(26)} exit=${String(code).padEnd(4)} ${(rec.wallMs / 1000).toFixed(0).padStart(4)}s  ${String(calls.length).padStart(2)} calls, ${vm} needed the machine${code === 0 ? "" : "   (discarded)"}`);
   return calls.length;
