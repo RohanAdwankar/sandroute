@@ -33,6 +33,9 @@ run — and the rest of the turn it is idle and allocated.
 - [Making wake cheap](#making-wake-cheap)
 - [Releasing the VM](#releasing-the-vm)
 - [Parity, and what it costs](#parity-and-what-it-costs)
+- [A turn with real work in it](#a-turn-with-real-work-in-it)
+- [Releasing versus routing](#releasing-versus-routing)
+- [Where the light tier earns its keep](#where-the-light-tier-earns-its-keep)
 - [Caveats](#caveats)
 - [What's left](#whats-left)
 
@@ -221,6 +224,27 @@ Compare that to lazy boot on its own, which decays from 32.2% saved to 10.4% sav
 the same two turns. Releasing the VM is flat because it isn't measuring "time before the
 first heavy call" — it's measuring how much of the turn genuinely needs a machine, and
 that doesn't change when you make the turn longer.
+
+## A turn with real work in it
+
+That turn is light: its VM commands are `uname` and a one-line `python3`. Here is the same
+comparison where the agent installs a dependency from PyPI and uses it, commands that take
+seconds rather than milliseconds:
+
+| config | tool latency | turn | VM allocated |
+|---|---|---|---|
+| agent inside the VM | 2988ms | 27065ms | **100%** |
+| sandroute, VM kept | 3039ms | +0.19% | 66.4% |
+| sandroute, 2s idle | 3442ms | +1.68% | 34.0% |
+| sandroute, 500ms idle | 3636ms | +2.39% | **18.2%** |
+
+The saving is smaller, because work that needs a machine holds one: 18% against 4%. The
+latency cost is still under three percent. Two things made the number trustworthy. The
+benchmark records exit codes, because a command that fails returns fast and a broken
+configuration reads as a quick one; before that, this table said +9.88% and 23.6% while
+`python3 app.py` was failing with `ModuleNotFoundError` on every wake. And the VM has to be
+suspended rather than stopped on release, or everything the agent installed is gone the next
+time it looks.
 
 ## Releasing versus routing
 

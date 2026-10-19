@@ -35,6 +35,15 @@ allocated, turn +1.2%) while lazy boot alone decays from 32.2% saved to 10.4%.
 
     npm run bench:turn -- --idle 2000 --repeat 3
 
+With real work in the turn -- installing a dependency from PyPI and using it -- the saving is
+smaller and holds: 18.2% allocated at a 500ms window, for +2.39% turn latency.
+
+    npm run bench:turn -- --heavy --idle 500      # needs SANDROUTE_TAP
+
+A VM that is also released when idle, with every command sent to it (`--all-vm`), is the fairer
+control. Routing takes it from 20.6% to 4.4% allocated on the light turn and from 30.2% to 16.7%
+on the one with real work, so most of the saving is releasing, and routing adds 1.8x to 4.7x.
+
 The reasoning and the rest of the measurements are in
 [docs/in-turn-spin-down.md](docs/in-turn-spin-down.md).
 
