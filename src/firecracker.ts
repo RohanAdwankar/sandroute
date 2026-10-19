@@ -231,7 +231,9 @@ export class FirecrackerVm implements VmBackend {
   private spawnFc(): string {
     this.dir = mkdtempSync(path.join(tmpdir(), "sandroute-fc-"));
     const apiSock = (this.apiSock = path.join(this.dir, "api.sock"));
-    this.proc = spawn(this.o.bin ?? "firecracker", ["--api-sock", apiSock], {
+    // setpriv execs into firecracker, so this is still its pid. The kernel then kills it when
+    // this process dies, however it dies: a crashed control plane must not leak microVMs.
+    this.proc = spawn("setpriv", ["--pdeathsig", "kill", this.o.bin ?? "firecracker", "--api-sock", apiSock], {
       cwd: this.dir,
       stdio: this.o.console ? ["ignore", "inherit", "inherit"] : "ignore",
     });

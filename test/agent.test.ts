@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -251,4 +251,23 @@ test("the host sets the guest's clock from its own when connecting", async () =>
   assert.ok(Math.abs(clock!.epoch! - Date.now() / 1000) < 2, "and it must be the host's time");
   client.close();
   await new Promise((r) => srv.close(() => r(null)));
+});
+
+test("a firecracker does not outlive the process that started it", async () => {
+  // A control plane that crashes must not leak microVMs, each of which holds memory. The
+  // binary is a stand-in that just sleeps: what is under test is who owns the process.
+  const dir = mkdtempSync(path.join(tmpdir(), "fakefc-"));
+  const marker = "fakefc-" + Math.random().toString(36).slice(2);
+  const bin = path.join(dir, "firecracker");
+  writeFileSync(bin, `#!/bin/bash\nexec -a ${marker} sleep 300\n`, { mode: 0o755 });
+  const parentScript = `
+    import { FirecrackerVm } from ${JSON.stringify(path.resolve("src/firecracker.ts"))};
+    new FirecrackerVm({ bin: ${JSON.stringify(bin)}, kernel: "k", rootfs: "r" }).boot("/w").catch(() => {});
+    setTimeout(() => process.kill(process.pid, "SIGKILL"), 1500);`;
+  const parent = spawn("node_modules/.bin/tsx", ["-e", parentScript], { stdio: "ignore" });
+  await new Promise((r) => parent.once("exit", r));
+  await new Promise((r) => setTimeout(r, 400));
+  const left = spawnSync("pgrep", ["-f", marker]).stdout.toString().trim();
+  if (left) spawnSync("pkill", ["-f", marker]);
+  assert.equal(left, "", "the microVM must die with the process that owns it");
 });
