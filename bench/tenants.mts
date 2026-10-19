@@ -96,10 +96,16 @@ async function perform(s: Sandroute, c: Call): Promise<string> {
   return design === "oxroute" ? "inprocess" : "vm";
 }
 
-async function tenant(i: number, s: Sandroute, endAt: number) {
+// A recorded task assumes the project as it was when recording began, so each task starts from
+// a fresh copy. The platform does this on the host, for every design alike; a microVM's copy
+// catches up through the ordinary sync.
+const fresh = (ws: string) => { for (const e of readdirSync(ws)) rmSync(path.join(ws, e), { recursive: true, force: true }); cpSync(fixture, ws, { recursive: true }); };
+
+async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
   await sleep(rng() * idleMean * 1000);                       // tenants do not all start together
   while (!stopping && Date.now() < endAt) {
     const t = traces[Math.floor(rng() * traces.length)];
+    fresh(ws);
     const t0 = Date.now();
     activeTurns++;
     for (let k = 0; k < t.calls.length && !stopping; k++) {
@@ -142,7 +148,7 @@ const sampler = setInterval(() => {
   if (!aborted && (free < 300 || diskFree < 6)) { aborted = free < 300 ? `memory: ${Math.round(free)} MiB left` : `disk: ${diskFree.toFixed(1)} GiB left`; stopping = true; }
 }, 1000);
 
-await Promise.all(sbs.map((s, i) => tenant(i, s, endAt)));
+await Promise.all(sbs.map((s, i) => tenant(i, s, endAt, `${RUN}/tenants/t${i}`)));
 clearInterval(sampler);
 const wall = (Date.now() - startedAt) / 1000;
 await Promise.all(sbs.map((s) => s.stop()));
