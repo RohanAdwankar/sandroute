@@ -103,3 +103,34 @@ test("with a sandbox, commands that need a machine still go to it", opts, async 
   assert.equal(calls.length, 4);
   await s.stop();
 });
+
+test("every tenant sees its workspace at the same path, whatever the host's layout", opts, async () => {
+  const a = tenant("alpha-secret"), b = tenant("bravo-secret");
+  const sa = new Sandbox({ workspace: a.ws, mountAt: "/work" }), sb = new Sandbox({ workspace: b.ws, mountAt: "/work" });
+  assert.equal((await sa.exec("cat /work/secret.txt")).stdout.trim(), "alpha-secret");
+  assert.equal((await sb.exec("cat /work/secret.txt")).stdout.trim(), "bravo-secret", "the same path means each tenant's own files");
+  const where = await sa.exec("pwd");
+  assert.equal(where.stdout.trim(), "/work", "commands start in the mount point");
+  // the environment and the working directory do not reveal where the workspace really is
+  for (const cmd of ["env", "pwd -P"]) {
+    const r = await sa.exec(cmd);
+    assert.ok(!(r.stdout + r.stderr).includes(a.ws), `the host path leaked through: ${cmd}`);
+  }
+  // /proc/self/mountinfo still names the source of the bind mount, which is the tenant's
+  // own directory and nothing else's. So host workspaces belong under a path that says
+  // nothing, and what has to hold is that no tenant can learn another's.
+  const mounts = await sa.exec("cat /proc/self/mountinfo");
+  assert.ok(!mounts.stdout.includes(path.basename(b.ws)), "another tenant's directory is not visible in the mount table");
+});
+
+test("the router and the file tools use the path the agent sees", opts, async () => {
+  const { ws, sb } = (() => { const t = tenant("seen"); return { ws: t.ws, sb: new Sandbox({ workspace: t.ws, mountAt: "/work" }) }; })();
+  const s = new Sandroute({ workspace: ws, workspacePath: "/work", light: sb });
+  const r = await s.run("cat /work/secret.txt");
+  assert.equal(r.tier, "inprocess", "a path under the agent's workspace is not outside it");
+  assert.equal(r.stdout.trim(), "seen");
+  await s.writeFile("out/new.txt", "hello\n");
+  assert.equal(readFileSync(path.join(ws, "out/new.txt"), "utf8"), "hello\n", "a relative path lands in the real workspace");
+  assert.equal(await s.readFile("/work/out/new.txt"), "hello\n");
+  assert.equal((await s.run("cat /etc/hostname")).tier, "vm", "anything else is still outside");
+});

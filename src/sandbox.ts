@@ -12,6 +12,10 @@
 //   own user namespace    no privilege outside the sandbox
 //   own cgroup (optional) memory and process limits per tenant
 //
+// One thing is not hidden: /proc/self/mountinfo names the host directory behind the
+// workspace mount. That is the tenant's own directory, never another's, but it means
+// workspaces should live under a path that says nothing about the host.
+//
 // It is container-grade isolation, which is weaker than a VM: the command shares the host
 // kernel. That is why it is only for commands that run fixed, audited utilities over a
 // tenant's files; anything that runs code the tenant wrote goes to the microVM.
@@ -19,6 +23,12 @@ import { spawn } from "node:child_process";
 
 export interface SandboxOptions {
   workspace: string;
+  /**
+   * Where the tenant sees its workspace. Defaults to its real path. Mounting every
+   * tenant's at the same place means a tenant learns nothing about the host's layout, and
+   * the same command line means the same thing in the sandbox as in the VM.
+   */
+  mountAt?: string;
   /** A cgroup v2 directory every command is placed in, for memory.max and pids.max. */
   cgroup?: string;
   timeoutMs?: number;
@@ -31,16 +41,15 @@ export interface SandboxResult {
   exitCode: number;
 }
 
-export function bwrapArgs(workspace: string, cwd: string, env: Record<string, string> = {}): string[] {
-  const e = { PATH: "/usr/bin:/bin", HOME: workspace, LANG: "C.UTF-8", ...env };
+export function bwrapArgs(workspace: string, mountAt: string, cwd: string, env: Record<string, string> = {}): string[] {
+  const e = { PATH: "/usr/bin:/bin", HOME: mountAt, LANG: "C.UTF-8", ...env };
   return [
     "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
     "--ro-bind", "/usr", "/usr",
     "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64", "--symlink", "usr/sbin", "/sbin",
     "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-    // the same absolute path as on the host, so a path in a command resolves as written
-    "--bind", workspace, workspace, "--chdir", cwd,
+    "--bind", workspace, mountAt, "--chdir", cwd,
     ...Object.entries(e).flatMap(([k, v]) => ["--setenv", k, v]),
   ];
 }
@@ -49,7 +58,8 @@ export class Sandbox {
   constructor(private o: SandboxOptions) {}
 
   exec(command: string, cwd?: string, env?: Record<string, string>): Promise<SandboxResult> {
-    const inner = ["bwrap", ...bwrapArgs(this.o.workspace, cwd ?? this.o.workspace, env), "/usr/bin/bash", "-c", command];
+    const at = this.o.mountAt ?? this.o.workspace;
+    const inner = ["bwrap", ...bwrapArgs(this.o.workspace, at, cwd ?? at, env), "/usr/bin/bash", "-c", command];
     // Joining the cgroup has to happen before bwrap starts so everything it forks inherits it.
     const argv = this.o.cgroup
       ? ["/usr/bin/sh", ["-c", 'echo $$ > "$1/cgroup.procs" && shift && exec "$@"', "sh", this.o.cgroup, ...inner]] as const

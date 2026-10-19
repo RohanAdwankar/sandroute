@@ -29,6 +29,13 @@ export interface FirecrackerOptions {
   /** Refuse to sync a file larger than this. Defaults to 64MiB. */
   maxFileBytes?: number;
   /**
+   * Where the workspace lives inside the guest, when that is not where it lives on the
+   * host. Every tenant can then see /work while their host directories differ, which is
+   * what lets one pristine snapshot serve all of them: the guest agent root is baked into
+   * the snapshot, so it is keyed by this path and not by the host.
+   */
+  guestWorkspace?: string;
+  /**
    * Give the guest a network. It behaves like any other machine: it can reach the
    * internet and install what it needs, and it cannot reach the host.
    *
@@ -175,6 +182,7 @@ export class FirecrackerVm implements VmBackend {
   private proc?: ChildProcess;
   private client?: AgentClient;
   private workspace = "";
+  private guest = "";
   private dir = "";
   private apiSock = "";
   /** Snapshot of this session, written when it is suspended. Holds whatever the guest
@@ -187,6 +195,7 @@ export class FirecrackerVm implements VmBackend {
 
   async boot(workspace: string): Promise<void> {
     this.workspace = workspace;
+    this.guest = this.o.guestWorkspace ?? workspace;
     if (this.sessionSnap) {
       // resume this session rather than start a clean one: anything installed is in here
       this.lastBootWasRestore = true;
@@ -195,7 +204,7 @@ export class FirecrackerVm implements VmBackend {
       await this.openClient();
       return;
     }
-    const snap = this.snapPaths(workspace);
+    const snap = this.snapPaths(this.guest);
     if (snap && existsSync(snap.state) && existsSync(snap.mem)) {
       this.lastBootWasRestore = true;
       await this.restore(snap);
@@ -204,7 +213,7 @@ export class FirecrackerVm implements VmBackend {
       return;
     }
     this.lastBootWasRestore = false;
-    const apiSock = await this.coldBoot(workspace);
+    const apiSock = await this.coldBoot(this.guest);
     if (snap) await this.prime(apiSock, snap);
     await this.openClient();
   }

@@ -32,6 +32,12 @@ export interface SandrouteOptions {
    * to each other, and the interpreter is not built at all.
    */
   light?: Sandbox;
+  /**
+   * The path the agent sees its workspace at, when that is not the real one. Commands,
+   * the file tools and the VM all use it, so a tenant's host layout never reaches it.
+   * Defaults to the real path.
+   */
+  workspacePath?: string;
 }
 
 export interface RunResult {
@@ -51,6 +57,7 @@ export class Sandroute {
   readonly bash?: Bash;
   readonly vm: VmBackend;
   private known: Set<string>;
+  private at: string;
   private vmUp = false;
   private vmBoot?: Promise<void>;
   private inFlight = 0;
@@ -71,7 +78,8 @@ export class Sandroute {
 
   constructor(private opts: SandrouteOptions) {
     this.vm = opts.vm ?? new HostProcessVm();
-    if (!opts.light) {
+    this.at = opts.workspacePath ?? opts.workspace;
+    if (!opts.light && !opts.allInVm) {
       const fs = new MountableFs({
         base: new InMemoryFs(),
         mounts: [{ mountPoint: opts.workspace, filesystem: new ReadWriteFs({ root: opts.workspace }) }],
@@ -97,7 +105,7 @@ export class Sandroute {
 
   async run(command: string, cwd?: string): Promise<RunResult> {
     const t0 = Date.now();
-    const d: Decision = this.opts.allInVm ? { tier: "vm", reason: "all commands run in the VM" } : classify(this.known, command, this.opts.workspace);
+    const d: Decision = this.opts.allInVm ? { tier: "vm", reason: "all commands run in the VM" } : classify(this.known, command, this.at);
     let res: { stdout: string; stderr: string; exitCode: number };
     let booted = false;
     let bootMs = 0;
@@ -119,7 +127,7 @@ export class Sandroute {
           await this.vmBoot;
           bootMs = Date.now() - tb;
         }
-        res = await this.vm.exec(command, { cwd: cwd ?? this.opts.workspace });
+        res = await this.vm.exec(command, { cwd: cwd ?? this.at });
       } finally {
         this.inFlight--;
         this.armIdle();
@@ -140,7 +148,7 @@ export class Sandroute {
    */
   async readFile(file: string, opts: { offset?: number; limit?: number } = {}): Promise<string> {
     return this.fileOp("read", file, async () => {
-      if (this.opts.light) return this.inSandbox({ tool: "read", filePath: this.resolve(file), ...opts });
+      if (this.viaCommands) return this.inSandbox({ tool: "read", filePath: this.resolve(file), ...opts });
       const text = await this.bash!.fs.readFile(this.resolve(file), "utf8");
       if (opts.offset === undefined && opts.limit === undefined) return text;
       const from = Math.max(0, (opts.offset ?? 1) - 1);
@@ -151,7 +159,7 @@ export class Sandroute {
   async writeFile(file: string, content: string): Promise<void> {
     await this.fileOp("write", file, async () => {
       const full = this.resolve(file);
-      if (this.opts.light) { await this.inSandbox({ tool: "write", filePath: full, content }); return; }
+      if (this.viaCommands) { await this.inSandbox({ tool: "write", filePath: full, content }); return; }
       const dir = path.dirname(full);
       if (dir && dir !== full) await this.bash!.fs.mkdir(dir, { recursive: true });
       await this.bash!.fs.writeFile(full, content);
@@ -161,7 +169,7 @@ export class Sandroute {
   async editFile(file: string, oldString: string, newString: string, replaceAll = false): Promise<number> {
     return this.fileOp("edit", file, async () => {
       const full = this.resolve(file);
-      if (this.opts.light) return Number(await this.inSandbox({ tool: "edit", filePath: full, oldString, newString, replaceAll }));
+      if (this.viaCommands) return Number(await this.inSandbox({ tool: "edit", filePath: full, oldString, newString, replaceAll }));
       const before = await this.bash!.fs.readFile(full, "utf8");
       const hits = before.split(oldString).length - 1;
       if (hits === 0) throw new Error(`oldString not found in ${file}`);
@@ -171,8 +179,14 @@ export class Sandroute {
     });
   }
 
+  /** The file tools are commands too, run wherever commands are: the sandbox, or the VM
+   *  when every command goes there. */
+  private get viaCommands() {
+    return !!(this.opts.light || this.opts.allInVm);
+  }
+
   private async inSandbox(call: FileCall): Promise<string> {
-    const r = await this.opts.light!.exec(fileCommand(call));
+    const r = this.opts.allInVm ? await this.run(fileCommand(call)) : await this.opts.light!.exec(fileCommand(call));
     if (r.exitCode !== 0) throw new Error(r.stderr.trim() || `exit ${r.exitCode}`);
     return r.stdout;
   }
@@ -188,7 +202,7 @@ export class Sandroute {
   }
 
   private resolve(file: string) {
-    return path.isAbsolute(file) ? file : path.join(this.opts.workspace, file);
+    return path.isAbsolute(file) ? file : path.join(this.at, file);
   }
 
   /** File tools are in-process by definition, but they are still agent activity and belong in the log. */
