@@ -234,5 +234,5 @@ test("a backend that can suspend is suspended, not stopped", async () => {
   assert.equal(vm.suspends, 1, "releasing must keep what the machine accumulated");
   assert.equal(vm.stops, 0, "a clean stop would throw it away");
   await s.stop();
-  assert.equal(vm.stops, 0, "and the vm was already handed back");
+  assert.equal(vm.stops, 1, "ending the session deletes what was saved, even though the vm was already handed back");
 });

@@ -277,13 +277,13 @@ export class Sandroute {
 
   async stop() {
     clearTimeout(this.idleTimer);
-    if (this.vmUp) {
-      if (this.allocSince !== undefined) {
-        this.allocMs += Date.now() - this.allocSince;
-        this.allocSince = undefined;
-      }
-      this.vmUp = false;
-      await this.vm.stop();
+    if (this.allocSince !== undefined) {
+      this.allocMs += Date.now() - this.allocSince;
+      this.allocSince = undefined;
     }
+    this.vmUp = false;
+    // Whether or not it is up: a suspended session is a snapshot on disk, and ending the
+    // session is the only thing that deletes it.
+    await this.vm.stop();
   }
 }

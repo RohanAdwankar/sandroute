@@ -32,5 +32,6 @@ export interface VmBackend {
    * that the workspace does not cover is lost.
    */
   suspend?(): Promise<void>;
+  /** Destroy the machine and anything saved from it, whether it is up or suspended. */
   stop(): Promise<void>;
 }
