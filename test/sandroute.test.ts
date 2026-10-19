@@ -236,3 +236,26 @@ test("a backend that can suspend is suspended, not stopped", async () => {
   await s.stop();
   assert.equal(vm.stops, 1, "ending the session deletes what was saved, even though the vm was already handed back");
 });
+
+test("a command that arrives while the vm is being suspended waits for it", async () => {
+  // Booting while a suspend is still writing the snapshot gives two machines for one
+  // session: the new one is killed by the old one's cleanup, and the command fails.
+  let transitions = 0, overlapped = 0, boots = 0;
+  const enter = async (work: () => Promise<void>) => { if (++transitions > 1) overlapped++; try { await work(); } finally { transitions--; } };
+  const vm = {
+    name: "slow-suspend", up: false,
+    boot: () => enter(async () => { await settle(10); boots++; vm.up = true; }),
+    exec: async () => { if (!vm.up) throw new Error("exec on a machine that is not up"); return { stdout: "ok\\n", stderr: "", exitCode: 0 }; },
+    suspend: () => enter(async () => { await settle(120); vm.up = false; }),
+    stop: async () => { vm.up = false; },
+  };
+  const s = new Sandroute({ workspace: mkdtempSync(path.join(tmpdir(), "sr-")), vm, idleMs: 30 });
+  for (let round = 0; round < 4; round++) {
+    assert.equal((await s.run("chromium --version")).exitCode, 0);
+    while (s.releaseCount <= round) await settle(5);   // the idle timer has fired and the suspend has begun
+    await settle(20);                                    // and is partway through writing
+    assert.equal((await s.run("chromium --version")).exitCode, 0, "the command must wait, then run");
+  }
+  assert.equal(overlapped, 0, "a boot must never overlap a suspend");
+  await s.stop();
+});

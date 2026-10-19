@@ -61,6 +61,8 @@ export class Sandroute {
   private vmUp = false;
   private vmBoot?: Promise<void>;
   private inFlight = 0;
+  /** Set while a release is writing its snapshot. */
+  private releasing?: Promise<unknown>;
   private idleTimer?: NodeJS.Timeout;
   /** What was still running the last time a release was refused. */
   lastPinned: { pid: number; comm: string }[] = [];
@@ -112,6 +114,9 @@ export class Sandroute {
     if (d.tier === "inprocess") {
       res = this.opts.light ? await this.opts.light.exec(command, cwd) : await this.bash!.exec(command, { cwd });
     } else {
+      // A release in progress finishes first. Booting over it would run two machines for one
+      // session, and the old one's cleanup would take the new one down with it.
+      await this.releasing;
       clearTimeout(this.idleTimer);
       this.inFlight++;
       try {
@@ -271,12 +276,19 @@ export class Sandroute {
     }
     this.releaseCount++;
     // keep what the guest accumulated, if the backend can; a clean restore would drop it
-    await (this.vm.suspend ? this.vm.suspend() : this.vm.stop());
+    const suspending = this.vm.suspend ? this.vm.suspend() : this.vm.stop();
+    this.releasing = suspending.catch(() => {});
+    try {
+      await suspending;
+    } finally {
+      this.releasing = undefined;
+    }
     return true;
   }
 
   async stop() {
     clearTimeout(this.idleTimer);
+    await this.releasing;
     if (this.allocSince !== undefined) {
       this.allocMs += Date.now() - this.allocSince;
       this.allocSince = undefined;
