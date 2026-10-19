@@ -86,6 +86,9 @@ test("the file tools run in the sandbox and never touch an interpreter", opts, a
   assert.match(readFileSync(path.join(ws, "notes/a.txt"), "utf8"), /third \$HOME/);
   await assert.rejects(() => s.editFile("notes/a.txt", "absent", "x"), /not found/);
   await assert.rejects(() => s.readFile("/etc/shadow"));
+  // reading a directory lists it, as the built-in tool does, with directories marked
+  mkdirSync(path.join(ws, "notes/sub"), { recursive: true });
+  assert.deepEqual((await s.readFile("notes")).trim().split("\n").sort(), ["a.txt", "sub/"]);
   assert.deepEqual((await s.glob("*.txt")).map((f) => path.basename(f)), ["a.txt"]);
   assert.deepEqual((await s.grepFiles("third")).map((f) => path.basename(f)), ["a.txt"]);
 });

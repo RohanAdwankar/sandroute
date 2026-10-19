@@ -25,9 +25,11 @@ print(n if a["all"] else 1)`;
 export function fileCommand(c: FileCall): string {
   switch (c.tool) {
     case "read": {
-      if (c.offset === undefined && c.limit === undefined) return `cat -- ${q(c.filePath)}`;
-      const from = Math.max(1, c.offset ?? 1);
-      return `sed -n '${from},${from + (c.limit ?? 2000) - 1}p' ${q(c.filePath)}`;
+      // the built-in read tool lists a directory, and agents ask it to constantly
+      const body = c.offset === undefined && c.limit === undefined
+        ? `cat -- ${q(c.filePath)}`
+        : `sed -n '${Math.max(1, c.offset ?? 1)},${Math.max(1, c.offset ?? 1) + (c.limit ?? 2000) - 1}p' ${q(c.filePath)}`;
+      return `if [ -d ${q(c.filePath)} ]; then ls -1Ap -- ${q(c.filePath)}; else ${body}; fi`;
     }
     case "write":
       return `mkdir -p "$(dirname -- ${q(c.filePath)})" && printf %s ${q(b64(c.content))} | base64 -d > ${q(c.filePath)}`;
