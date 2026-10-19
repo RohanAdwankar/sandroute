@@ -1,9 +1,11 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs, getCommandNames } from "just-bash";
+import { fileCommand, type FileCall } from "./fileops.js";
 import { gitCommand } from "./git.js";
 import { HostProcessVm } from "./host-vm.js";
 import { classify, type Decision } from "./router.js";
+import type { Sandbox } from "./sandbox.js";
 import type { VmBackend } from "./vm.js";
 
 export interface SandrouteOptions {
@@ -24,6 +26,12 @@ export interface SandrouteOptions {
    * where every command wakes it.
    */
   allInVm?: boolean;
+  /**
+   * Run the light tier as native processes in this sandbox, one per command, instead of
+   * in a JavaScript interpreter inside this process. Required when tenants can be hostile
+   * to each other, and the interpreter is not built at all.
+   */
+  light?: Sandbox;
 }
 
 export interface RunResult {
@@ -40,7 +48,7 @@ export interface RunResult {
 }
 
 export class Sandroute {
-  readonly bash: Bash;
+  readonly bash?: Bash;
   readonly vm: VmBackend;
   private known: Set<string>;
   private vmUp = false;
@@ -63,17 +71,23 @@ export class Sandroute {
 
   constructor(private opts: SandrouteOptions) {
     this.vm = opts.vm ?? new HostProcessVm();
-    const fs = new MountableFs({
-      base: new InMemoryFs(),
-      mounts: [{ mountPoint: opts.workspace, filesystem: new ReadWriteFs({ root: opts.workspace }) }],
-    });
-    this.bash = new Bash({ fs, cwd: opts.workspace, customCommands: [gitCommand], network: { dangerouslyAllowFullInternetAccess: true } });
+    if (!opts.light) {
+      const fs = new MountableFs({
+        base: new InMemoryFs(),
+        mounts: [{ mountPoint: opts.workspace, filesystem: new ReadWriteFs({ root: opts.workspace }) }],
+      });
+      this.bash = new Bash({ fs, cwd: opts.workspace, customCommands: [gitCommand], network: { dangerouslyAllowFullInternetAccess: true } });
+    }
     this.vm.onConflict = (paths) => {
       this.conflicts.push(...paths);
       if (this.opts.logFile)
         appendFileSync(this.opts.logFile, JSON.stringify({ t: new Date().toISOString(), conflicts: paths }) + "\n");
     };
-    this.known = new Set([...getCommandNames(), "curl", "git"]);
+    // With a sandbox the commands that run are the host's own, so only those the host has
+    // can be served there. git and curl need the network, which the sandbox does not have.
+    this.known = opts.light
+      ? new Set(getCommandNames().filter((n) => n !== "git" && n !== "curl" && existsSync(`/usr/bin/${n}`)))
+      : new Set([...getCommandNames(), "curl", "git"]);
   }
 
   /** Wall time the VM has been allocated so far, counting any stretch still open. */
@@ -88,7 +102,7 @@ export class Sandroute {
     let booted = false;
     let bootMs = 0;
     if (d.tier === "inprocess") {
-      res = await this.bash.exec(command, { cwd });
+      res = this.opts.light ? await this.opts.light.exec(command, cwd) : await this.bash!.exec(command, { cwd });
     } else {
       clearTimeout(this.idleTimer);
       this.inFlight++;
@@ -126,7 +140,8 @@ export class Sandroute {
    */
   async readFile(file: string, opts: { offset?: number; limit?: number } = {}): Promise<string> {
     return this.fileOp("read", file, async () => {
-      const text = await this.bash.fs.readFile(this.resolve(file), "utf8");
+      if (this.opts.light) return this.inSandbox({ tool: "read", filePath: this.resolve(file), ...opts });
+      const text = await this.bash!.fs.readFile(this.resolve(file), "utf8");
       if (opts.offset === undefined && opts.limit === undefined) return text;
       const from = Math.max(0, (opts.offset ?? 1) - 1);
       return text.split("\n").slice(from, from + (opts.limit ?? 2000)).join("\n");
@@ -136,42 +151,40 @@ export class Sandroute {
   async writeFile(file: string, content: string): Promise<void> {
     await this.fileOp("write", file, async () => {
       const full = this.resolve(file);
+      if (this.opts.light) { await this.inSandbox({ tool: "write", filePath: full, content }); return; }
       const dir = path.dirname(full);
-      if (dir && dir !== full) await this.bash.fs.mkdir(dir, { recursive: true });
-      await this.bash.fs.writeFile(full, content);
+      if (dir && dir !== full) await this.bash!.fs.mkdir(dir, { recursive: true });
+      await this.bash!.fs.writeFile(full, content);
     });
   }
 
   async editFile(file: string, oldString: string, newString: string, replaceAll = false): Promise<number> {
     return this.fileOp("edit", file, async () => {
       const full = this.resolve(file);
-      const before = await this.bash.fs.readFile(full, "utf8");
+      if (this.opts.light) return Number(await this.inSandbox({ tool: "edit", filePath: full, oldString, newString, replaceAll }));
+      const before = await this.bash!.fs.readFile(full, "utf8");
       const hits = before.split(oldString).length - 1;
       if (hits === 0) throw new Error(`oldString not found in ${file}`);
       if (hits > 1 && !replaceAll) throw new Error(`oldString appears ${hits} times in ${file}; pass replaceAll`);
-      await this.bash.fs.writeFile(full, replaceAll ? before.split(oldString).join(newString) : before.replace(oldString, newString));
+      await this.bash!.fs.writeFile(full, replaceAll ? before.split(oldString).join(newString) : before.replace(oldString, newString));
       return replaceAll ? hits : 1;
     });
+  }
+
+  private async inSandbox(call: FileCall): Promise<string> {
+    const r = await this.opts.light!.exec(fileCommand(call));
+    if (r.exitCode !== 0) throw new Error(r.stderr.trim() || `exit ${r.exitCode}`);
+    return r.stdout;
   }
 
   /** Both search tools run through the in-process shell, so they see the workspace and
    *  nothing else, and the agent cannot enumerate the host by asking for a wider path. */
   async glob(pattern: string, dir?: string): Promise<string[]> {
-    const r = await this.run(`find ${this.quote(dir ?? ".")} -type f -name ${this.quote(pattern)}`, dir);
-    return r.stdout.split("\n").filter(Boolean);
+    return (await this.run(fileCommand({ tool: "glob", pattern, path: dir }), dir)).stdout.split("\n").filter(Boolean);
   }
 
   async grepFiles(pattern: string, dir?: string, include?: string): Promise<string[]> {
-    const where = this.quote(dir ?? ".");
-    // the in-process grep has no --include, so narrow with find first
-    const cmd = include
-      ? `find ${where} -type f -name ${this.quote(include)} -exec grep -l -e ${this.quote(pattern)} {} +`
-      : `grep -rl -e ${this.quote(pattern)} ${where}`;
-    return (await this.run(cmd, dir)).stdout.split("\n").filter(Boolean);
-  }
-
-  private quote(s: string) {
-    return `'${s.replaceAll("'", `'\\''`)}'`;
+    return (await this.run(fileCommand({ tool: "grep", pattern, path: dir, include }), dir)).stdout.split("\n").filter(Boolean);
   }
 
   private resolve(file: string) {
