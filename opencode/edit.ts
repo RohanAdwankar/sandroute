@@ -1,6 +1,6 @@
 // Drop-in replacement for opencode's built-in edit tool. See write.ts for why.
 import { tool } from "@opencode-ai/plugin";
-import { forWorkspace } from "../shared.ts";
+import { forWorkspace, trace } from "../shared.ts";
 
 export default tool({
   description: "Performs an exact string replacement in a file in the project workspace.",
@@ -11,6 +11,7 @@ export default tool({
     replaceAll: tool.schema.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
   },
   async execute(args, ctx) {
+    trace("edit", args);
     const n = await forWorkspace(ctx.directory).editFile(args.filePath, args.oldString, args.newString, args.replaceAll ?? false);
     ctx.metadata({ title: args.filePath, metadata: { tier: "inprocess" } });
     return `replaced ${n} occurrence${n === 1 ? "" : "s"} in ${args.filePath}`;

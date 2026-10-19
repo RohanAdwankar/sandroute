@@ -1,7 +1,7 @@
 // Drop-in replacement for opencode's built-in bash tool.
 // Copy to <project>/.opencode/tool/bash.ts. Same name, so it overrides the built-in.
 import { tool } from "@opencode-ai/plugin";
-import { forWorkspace } from "../shared.ts";
+import { forWorkspace, trace } from "../shared.ts";
 
 export default tool({
   description:
@@ -13,6 +13,7 @@ export default tool({
     description: tool.schema.string().optional().describe("Short description of what the command does"),
   },
   async execute(args, ctx) {
+    trace("bash", args);
     const r = await forWorkspace(ctx.directory).run(args.command, args.workdir);
     ctx.metadata({ title: args.description ?? args.command, metadata: { tier: r.tier, reason: r.reason } });
     const out = r.stdout + (r.stderr ? (r.stdout ? "\n" : "") + r.stderr : "");

@@ -1,5 +1,6 @@
 // Shared by the tool overrides in opencode/. Lives outside .opencode/tool/ because
 // opencode registers every file in that directory as a tool.
+import { appendFileSync } from "node:fs";
 import { FirecrackerVm, Sandroute } from "../src/index.ts";
 
 const runners = new Map<string, Sandroute>();
@@ -16,4 +17,13 @@ export function forWorkspace(dir: string) {
     runners.set(dir, r);
   }
   return r;
+}
+
+/**
+ * Record what the agent asked for, in full, so a session can be replayed against other
+ * sandboxes. The routing log keeps only a summary: a write there is a path, and replaying
+ * it needs the content.
+ */
+export function trace(tool: string, args: unknown) {
+  if (process.env.SANDROUTE_TRACE) appendFileSync(process.env.SANDROUTE_TRACE, JSON.stringify({ t: Date.now(), tool, args }) + "\n");
 }

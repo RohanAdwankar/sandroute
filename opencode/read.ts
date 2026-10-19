@@ -1,6 +1,6 @@
 // Drop-in replacement for opencode's built-in read tool. See write.ts for why.
 import { tool } from "@opencode-ai/plugin";
-import { forWorkspace } from "../shared.ts";
+import { forWorkspace, trace } from "../shared.ts";
 
 export default tool({
   description: "Reads a file from the project workspace.",
@@ -10,6 +10,7 @@ export default tool({
     limit: tool.schema.number().optional().describe("The maximum number of lines to read (defaults to 2000)"),
   },
   async execute(args, ctx) {
+    trace("read", args);
     const text = await forWorkspace(ctx.directory).readFile(args.filePath, { offset: args.offset, limit: args.limit });
     ctx.metadata({ title: args.filePath, metadata: { tier: "inprocess" } });
     return text;
