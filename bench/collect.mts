@@ -22,14 +22,18 @@ mkdirSync(out, { recursive: true });
 
 async function once(task: { id: string; prompt: string }, model: string) {
   const ws = mkdtempSync(path.join(tmpdir(), "trace-ws-")), home = mkdtempSync(path.join(tmpdir(), "trace-home-"));
+  // The workspace is the project and nothing else. Everything of ours -- the routing tools,
+  // opencode's config, the logs -- lives outside it, because an agent explores what it is
+  // given and a recording full of our own plumbing is not how anyone's project looks.
   cpSync(path.join(root, "bench/fixtures/textstats"), ws, { recursive: true });
-  writeFileSync(path.join(ws, "opencode.json"), JSON.stringify({ $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }));
-  mkdirSync(path.join(ws, ".opencode/tool"), { recursive: true });
+  const cfg = path.join(home, "c/opencode");
+  mkdirSync(path.join(cfg, "tool"), { recursive: true });
+  writeFileSync(path.join(cfg, "opencode.json"), JSON.stringify({ $schema: "https://opencode.ai/config.json", permission: { "*": "allow" }, autoupdate: false }));
   const abs = (f: string) => readFileSync(path.join(root, f), "utf8").replace("../src/index.ts", path.join(root, "src/index.ts"));
-  writeFileSync(path.join(ws, ".opencode/shared.ts"), abs("opencode/shared.ts"));
-  for (const t of ["bash", "read", "write", "edit", "glob", "grep"]) writeFileSync(path.join(ws, `.opencode/tool/${t}.ts`), abs(`opencode/${t}.ts`));
-  symlinkSync(path.join(root, "node_modules"), path.join(ws, "node_modules"));
-  const log = path.join(ws, "sandroute.log"), trace = path.join(ws, "trace.jsonl");
+  writeFileSync(path.join(cfg, "shared.ts"), abs("opencode/shared.ts"));
+  for (const t of ["bash", "read", "write", "edit", "glob", "grep"]) writeFileSync(path.join(cfg, `tool/${t}.ts`), abs(`opencode/${t}.ts`));
+  symlinkSync(path.join(root, "node_modules"), path.join(cfg, "node_modules"));
+  const log = path.join(home, "sandroute.log"), trace = path.join(home, "trace.jsonl");
   const env = { ...process.env, PWD: ws, HOME: home, XDG_CONFIG_HOME: home + "/c", XDG_DATA_HOME: home + "/d", XDG_CACHE_HOME: home + "/k",
     SANDROUTE_LOG: log, SANDROUTE_TRACE: trace, SANDROUTE_VM: "firecracker", SANDROUTE_IDLE_MS: "700", SANDROUTE_TAP: "sr-tap0",
     SANDROUTE_FC_BIN: `${A}/firecracker`, SANDROUTE_FC_KERNEL: `${A}/vmlinux-6.1.128`, SANDROUTE_FC_ROOTFS: `${A}/rootfs.ext4`, SANDROUTE_FC_SNAPSHOT_DIR: `${A}/snapcache` };
