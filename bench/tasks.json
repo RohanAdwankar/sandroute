@@ -1,0 +1,10 @@
+[
+  { "id": "explain",   "prompt": "Read through this repo and tell me what it does and where the main logic lives." },
+  { "id": "fix-test",  "prompt": "The test suite is failing. Find out why and fix it." },
+  { "id": "add-fn",    "prompt": "Add a function word_frequencies(text) that returns a dict of word to count, add a test for it, and run the tests." },
+  { "id": "rename",    "prompt": "Rename the function cnt to something meaningful everywhere it is used and make sure the tests still pass." },
+  { "id": "hints",     "prompt": "Add type hints to every function in the main module." },
+  { "id": "readme",    "prompt": "Add a usage section to the README with examples that actually work. Run them to check." },
+  { "id": "todos",     "prompt": "Find every TODO or FIXME comment in the repo and list them with the file and line." },
+  { "id": "cli",       "prompt": "Add a command line entry point that prints the stats for a file given as an argument, then run it on README.md." }
+]
