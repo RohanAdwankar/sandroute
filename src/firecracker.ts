@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,10 +31,12 @@ export interface FirecrackerOptions {
   /**
    * Where the workspace lives inside the guest, when that is not where it lives on the
    * host. Every tenant can then see /work while their host directories differ, which is
-   * what lets one pristine snapshot serve all of them: the guest agent root is baked into
-   * the snapshot, so it is keyed by this path and not by the host.
+   * what lets one pristine snapshot serve all of them: the guest agent's root is baked
+   * into the snapshot, so it is keyed by this path and not by the host's.
    */
   guestWorkspace?: string;
+  /** Where suspended sessions are written. Defaults to snapshotDir. */
+  sessionDir?: string;
   /**
    * Give the guest a network. It behaves like any other machine: it can reach the
    * internet and install what it needs, and it cannot reach the host.
@@ -188,6 +190,8 @@ export class FirecrackerVm implements VmBackend {
   /** Snapshot of this session, written when it is suspended. Holds whatever the guest
    *  has accumulated -- installed packages, caches -- which the workspace does not cover. */
   private sessionSnap?: { state: string; mem: string };
+  private sessionBase?: string;
+  private sessionGen = 0;
   /** True when the last boot() restored a snapshot rather than cold booting. */
   lastBootWasRestore = false;
 
@@ -308,12 +312,14 @@ export class FirecrackerVm implements VmBackend {
    */
   async suspend(): Promise<void> {
     if (!this.proc) return;
-    const dir = this.o.snapshotDir ?? tmpdir();
+    const dir = this.o.sessionDir ?? this.o.snapshotDir ?? tmpdir();
     mkdirSync(dir, { recursive: true });
-    const base = this.sessionSnap ?? {
-      state: path.join(dir, `session-${process.pid}-${Date.now().toString(36)}.state`),
-      mem: path.join(dir, `session-${process.pid}-${Date.now().toString(36)}.mem`),
-    };
+    // Two slots taken in turn. A VM restored from a file keeps it mapped, so writing the
+    // next snapshot over the same file rewrites memory the guest may still read from it.
+    this.sessionBase ??= path.join(dir, `session-${randomUUID()}`);
+    this.sessionGen ^= 1;
+    const base = { state: `${this.sessionBase}.${this.sessionGen}.state`, mem: `${this.sessionBase}.${this.sessionGen}.mem` };
+    const previous = this.sessionSnap;
     // Hang up first. A vsock connection does not survive a snapshot, and a guest
     // restored while holding one comes back with a dead socket and never accepts again.
     this.client?.close();
@@ -325,6 +331,7 @@ export class FirecrackerVm implements VmBackend {
     });
     this.sessionSnap = base;
     await this.halt();
+    for (const f of [previous?.state, previous?.mem]) if (f) rmSync(f, { force: true });
   }
 
   async stop(): Promise<void> {
