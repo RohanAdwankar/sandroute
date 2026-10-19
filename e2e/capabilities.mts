@@ -8,7 +8,7 @@
 //   npx tsx e2e/capabilities.mts
 import { mkdirSync, rmSync } from "node:fs";
 import { ALWAYS_VM, MACHINE_QUERIES } from "../src/router.js";
-import { FirecrackerVm } from "../src/index.js";
+import { FirecrackerVm, fileCommand, type FileCall } from "../src/index.js";
 
 const A = process.env.SANDROUTE_ASSETS ?? "/home/rohan/fcassets";
 const WS = "/home/rohan/cap-ws";
@@ -53,6 +53,26 @@ for (const [label, cmd, ok] of net) {
   if (!pass) netFails.push(label);
   console.log(`  ${pass ? "✓" : "✗"} ${label}`);
 }
+// The file tools are shell commands, so the guest has to be able to run every one of them.
+// A binary missing from the image otherwise shows up as a failed write in the middle of a run.
+const calls: [string, FileCall, (out: string) => boolean][] = [
+  ["write", { tool: "write", filePath: "/tmp/cap/a.txt", content: "it's \"quoted\"\nline two\n" }, () => true],
+  ["read", { tool: "read", filePath: "/tmp/cap/a.txt" }, (o) => o.includes("line two")],
+  ["read a range", { tool: "read", filePath: "/tmp/cap/a.txt", offset: 2, limit: 1 }, (o) => o.trim() === "line two"],
+  ["read a directory", { tool: "read", filePath: "/tmp/cap" }, (o) => o.includes("a.txt")],
+  ["edit", { tool: "edit", filePath: "/tmp/cap/a.txt", oldString: "line two", newString: "line 2" }, (o) => o.trim() === "1"],
+  ["glob", { tool: "glob", pattern: "*.txt", path: "/tmp/cap" }, (o) => o.includes("a.txt")],
+  ["grep", { tool: "grep", pattern: "line 2", path: "/tmp/cap" }, (o) => o.includes("a.txt")],
+];
+console.log("\nthe file tools, inside the guest:\n");
+const toolFails: string[] = [];
+for (const [label, call, ok] of calls) {
+  const r = await vm.exec(fileCommand(call), { cwd: "/tmp" });
+  const pass = r.exitCode === 0 && ok(r.stdout);
+  if (!pass) toolFails.push(`${label}: ${(r.stderr || r.stdout).trim().split("\n")[0]}`);
+  console.log(`  ${pass ? "\u2713" : "\u2717"} ${label}${pass ? "" : "   " + (r.stderr || r.stdout).trim().split("\n")[0]}`);
+}
+if (toolFails.length) { console.log(`\n${toolFails.length} file tool operations cannot run in the guest`); process.exitCode = 1; }
 await vm.stop(); rmSync(WS, { recursive: true, force: true });
 
 if (netFails.length) {
