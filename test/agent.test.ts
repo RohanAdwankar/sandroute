@@ -155,6 +155,11 @@ test("a snapshot is not reused across workspaces or across rebuilt images", () =
   writeFileSync(rootfs, "image two, rebuilt and a different length");
   assert.notEqual(first, key("/work/one"), "a rebuilt image must not restore a snapshot of the old one");
 
+  const sized = (memMiB: number, vcpus: number) => snapshotPaths({ kernel, rootfs, snapshotDir: path.join(d, "snaps"), memMiB, vcpus }, "/work/one")!.state;
+  assert.notEqual(sized(256, 1), sized(1024, 1), "a different amount of memory is a different machine");
+  assert.notEqual(sized(256, 1), sized(256, 2), "and so is a different number of cores");
+  assert.equal(sized(256, 1), sized(256, 1));
+
   assert.equal(snapshotPaths({ kernel, rootfs }, "/work/one"), undefined, "no snapshot dir, no snapshot");
 });
 

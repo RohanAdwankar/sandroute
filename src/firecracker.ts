@@ -162,6 +162,9 @@ export function snapshotPaths(o: FirecrackerOptions, workspace: string): { state
     const st = statSync(f, { throwIfNoEntry: false });
     h.update(`${f}:${st ? `${st.size}:${Math.floor(st.mtimeMs)}` : "missing"}`);
   }
+  // the machine is part of the snapshot: restoring one taken at a different size or core
+  // count gives a guest whose memory map does not match the VM around it
+  h.update(`machine:${o.vcpus ?? 2}:${o.memMiB ?? 1024}`);
   if (o.network) h.update(`net:${o.network.guestIp}:${o.network.gateway}`);
   const key = h.digest("hex").slice(0, 16);
   mkdirSync(o.snapshotDir, { recursive: true });
