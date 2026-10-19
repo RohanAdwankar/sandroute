@@ -20,6 +20,10 @@ const arg = (f: string) => { const i = process.argv.indexOf(f); return i > 0 ? N
 const idleMs = arg("--idle");
 const repeat = arg("--repeat") ?? 1;
 const baseline = process.argv.includes("--baseline");
+// --all-vm: no in-process tier, but the VM is still released when idle. This is what a
+// pure-firecracker platform that suspends between commands would do, and it is the control
+// that says how much of the saving comes from routing rather than from releasing.
+const allInVm = process.argv.includes("--all-vm");
 const detail = process.argv.includes("--detail");
 const WS = "/home/rohan/turn-ws";
 const FILES = 500;
@@ -108,9 +112,10 @@ if (baseline) {
   allocMs = turnMs;    // allocated for the whole turn, by definition
   await vm.stop();
 } else {
-  label = idleMs === undefined ? "sandroute, VM kept for the session" : `sandroute, ${idleMs}ms idle window`;
+  label = allInVm ? `pure VM, released after ${idleMs}ms idle`
+    : idleMs === undefined ? "sandroute, VM kept for the session" : `sandroute, ${idleMs}ms idle window`;
   const vm = new FirecrackerVm(fcOpts);
-  const s = new Sandroute({ workspace: WS, vm, idleMs });
+  const s = new Sandroute({ workspace: WS, vm, idleMs, allInVm });
   await vm.boot(WS); await vm.stop(); // prime the snapshot outside the measurement
   callMs = [];
   const t0 = Date.now();

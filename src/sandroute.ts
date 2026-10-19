@@ -18,6 +18,12 @@ export interface SandrouteOptions {
    * pays for the rest of the turn.
    */
   idleMs?: number;
+  /**
+   * Send every command to the VM, skipping the in-process tier. With idleMs this is the
+   * comparison the routing has to beat: a machine that is also released when idle, but
+   * where every command wakes it.
+   */
+  allInVm?: boolean;
 }
 
 export interface RunResult {
@@ -77,7 +83,7 @@ export class Sandroute {
 
   async run(command: string, cwd?: string): Promise<RunResult> {
     const t0 = Date.now();
-    const d = classify(this.known, command, this.opts.workspace);
+    const d: Decision = this.opts.allInVm ? { tier: "vm", reason: "all commands run in the VM" } : classify(this.known, command, this.opts.workspace);
     let res: { stdout: string; stderr: string; exitCode: number };
     let booted = false;
     let bootMs = 0;
