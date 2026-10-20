@@ -76,6 +76,8 @@ const ownChildren = (name: string) => readdirSync("/proc").filter((p) => /^\d+$/
   } catch { return false; }
 })());
 const pss = (pid: string) => { try { return Number(/Pss:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"))![1]) / 1024; } catch { return 0; } };
+// CPU a process has used so far, in clock ticks, so the sampler can say who is using the machine
+const ticks = (pid: string | number) => { try { const f = readFileSync(`/proc/${pid}/stat`, "utf8"); const r = f.slice(f.lastIndexOf(")") + 2).split(" "); return Number(r[11]) + Number(r[12]); } catch { return 0; } };
 const cpuNow = () => readFileSync("/proc/stat", "utf8").split("\n")[0].split(/\s+/).slice(1, 9).map(Number);
 const dirBytes = (d: string): number => { if (!existsSync(d)) return 0; let n = 0; for (const e of readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); n += e.isDirectory() ? dirBytes(p) : statSync(p).blocks * 512; } return n; };
 const pct = (xs: number[], p: number) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * p))]; };
@@ -166,13 +168,16 @@ if (process.argv.includes("--calibrate")) {
 
 startedAt = Date.now();
 const endAt = startedAt + minutes * 60_000;
-let prevCpu = cpuNow();
+let prevCpu = cpuNow(), prevSelf = ticks(process.pid), prevFc = new Map<string, number>();
 const sampler = setInterval(() => {
   const cpu = cpuNow(), d = cpu.map((v, k) => v - prevCpu[k]), tot = d.reduce((a, b) => a + b, 0) || 1; prevCpu = cpu;
   const fc = ownChildren("firecracker");
+  // percent of one core, for this harness and for its microVMs (those still alive)
+  const self = ticks(process.pid), selfPct = self - prevSelf; prevSelf = self;
+  let fcPct = 0; const nowFc = new Map<string, number>(); for (const p of fc) { const t = ticks(p); nowFc.set(p, t); fcPct += t - (prevFc.get(p) ?? t); } prevFc = nowFc;
   const free = meminfo("MemAvailable"), diskFree = (() => { const f = statfsSync(RUN); return (f.bavail * f.bsize) / 2 ** 30; })();
   const row = { t: Math.round((Date.now() - startedAt) / 1000), memAvailMiB: Math.round(free), fcCount: fc.length, fcPssMiB: Math.round(fc.reduce((a, p) => a + pss(p), 0)),
-    cpuBusy: +(100 * (1 - (d[3] + d[4]) / tot)).toFixed(1), iowait: +(100 * d[4] / tot).toFixed(1), load1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]),
+    cpuBusy: +(100 * (1 - (d[3] + d[4]) / tot)).toFixed(1), harnessCore: selfPct, microVMCores: +(fcPct / 100).toFixed(2), iowait: +(100 * d[4] / tot).toFixed(1), load1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]),
     diskFreeGiB: +diskFree.toFixed(1), sessionsGiB: +(dirBytes(`${RUN}/sessions`) / 2 ** 30).toFixed(2), active: activeTurns };
   samples.push(row);
   if (!aborted && (free < 300 || diskFree < 6)) { aborted = free < 300 ? `memory: ${Math.round(free)} MiB left` : `disk: ${diskFree.toFixed(1)} GiB left`; stopping = true; }
@@ -202,7 +207,7 @@ const result = {
   tiers: Object.fromEntries([...new Set(recs.map((r) => r.tier))].map((t) => [t, recs.filter((r) => r.tier === t).length])),
   wakes: sbs.reduce((a, s) => a + s.bootCount, 0), suspends: sbs.reduce((a, s) => a + s.releaseCount, 0),
   peak: { microVMs: max("fcCount"), vmPssMiB: max("fcPssMiB"), activeTurns: max("active"), sessionsGiB: max("sessionsGiB"), cpuBusy: max("cpuBusy"), iowait: max("iowait"), load1: max("load1") },
-  mean: { microVMs: +mean("fcCount").toFixed(1), vmPssMiB: Math.round(mean("fcPssMiB")), cpuBusy: +mean("cpuBusy").toFixed(1) },
+  mean: { microVMs: +mean("fcCount").toFixed(1), harnessPctOfACore: Math.round(mean("harnessCore")), microVMCores: +mean("microVMCores").toFixed(2), vmPssMiB: Math.round(mean("fcPssMiB")), cpuBusy: +mean("cpuBusy").toFixed(1) },
   memAvailableMiB: { start: Math.round(baseMem), min: Math.min(...samples.map((s) => s.memAvailMiB)) },
   leakedMicroVMs: leftover,
   slo: { p99Ms: sloP99, met: !aborted && errs.every((e) => !/firecracker|guest agent|vsock|timed out/.test(e.err ?? "")) && pct(lat, 0.99) <= sloP99 },
