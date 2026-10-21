@@ -1,5 +1,12 @@
 # Agents need more aggressive in-turn spin-down
 
+> **Superseded in part.** This was written for one tenant's turn, with the light tier as a
+> JavaScript interpreter inside the serving process. That is not safe when tenants can be hostile to
+> each other, so the light tier is now a per-command namespace sandbox. The claim that releasing a VM
+> is cheap also holds only when the guest has nothing worth keeping to snapshot: writing a tenant's
+> memory to disk is what made the first multi-tenant sweep collapse. See [capacity.md](capacity.md)
+> for the multi-tenant measurement and for what was corrected.
+
 A cloud coding agent holds a microVM for the whole turn and uses it for almost none of
 it. The question that decides whether anything can be done about that is a single one:
 **can you give the VM back between tool calls without the user noticing?**
