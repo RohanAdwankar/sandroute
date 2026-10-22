@@ -101,6 +101,30 @@ the 30 second window gave a borderline p99 and the 5 second window gave 456ms. `
 and does not benefit, since a shorter window means more wakes. Each design now has the window that suits
 it, and the ratio is 1.3 to 1.4.
 
+## How this relates to E2B
+
+E2B is the obvious comparison, and no measurement of it has been made. The `suspend` design above is
+built from the same parts and approximates its approach: a Firecracker microVM per sandbox, restored from a
+pre-booted template snapshot, and paused and resumed. It differs in ways that matter.
+
+E2B's open-source infrastructure restores memory lazily through userfaultfd, layers copy-on-write block
+devices, and pauses by writing memory and disk diffs against the template to object storage, so a pause
+writes far less than the full memory file a guest that has to be kept costs here. It runs each sandbox in
+its own cgroup and network namespace with a per-sandbox firewall, and a third-party comparison describes a
+resume as taking about a second, which includes fetching from object storage when a node has no cached copy.
+The benchmark here has none of the object storage, orchestrator, databases or firewall, so its restore
+times, tens of milliseconds, are not comparable with a hosted service's.
+
+A real comparison needs one of two things. Self-hosting E2B's infrastructure on comparable hardware, which
+needs KVM, Postgres, Redis, ClickHouse and object storage and so a machine with more room than this one. Or
+its hosted API, which can compare create and resume latency and price but not tenants per machine, since
+the hardware is theirs. Until then the claim is against a microVM per tenant with snapshot pause and
+resume, the design E2B and similar services use, and not against any of them.
+
+Sources: [e2b-dev/infra](https://github.com/e2b-dev/infra),
+[E2B snapshots](https://docs.e2b.dev/sandbox/snapshots),
+[Fly.io on E2B](https://fly.io/learn/fly-vs-e2b/).
+
 ## What this does not show
 
 - One machine, four cores. The ceilings are cpu and memory on this box and scale with it, but the ratio
