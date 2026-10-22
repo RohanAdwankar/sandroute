@@ -11,17 +11,23 @@
 //             the next command. The strongest alternative that keeps every tenant isolated.
 //   oxroute   fixed utilities run in a per-command namespace sandbox with no VM at all, and a
 //             microVM only for the commands that need one, suspended the same way.
+//   kata      a Kata Containers pod per tenant through the Kubernetes CRI, kept up. The VM-per-tenant
+//             design a Kubernetes operator picks for hostile tenants.
+//   kata-cold the same, but a pod is deleted after the idle window and the next command boots a new
+//             one, because Kata has no snapshot to release it to.
 //
 //   npx tsx bench/tenants.mts --design oxroute --tenants 64 --minutes 6
 import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { FirecrackerVm } from "../src/firecracker.js";
+import { KataVm } from "./kata-vm.mts";
 import { Sandbox } from "../src/sandbox.js";
 import { Sandroute } from "../src/sandroute.js";
 
 const arg = (f: string, d: string) => { const i = process.argv.indexOf(f); return i > 0 ? process.argv[i + 1] : d; };
-const design = arg("--design", "oxroute") as "kept" | "suspend" | "oxroute";
+const design = arg("--design", "oxroute") as "kept" | "suspend" | "oxroute" | "kata" | "kata-cold";
+const isKata = design.startsWith("kata");
 const N = Number(arg("--tenants", "16"));
 const minutes = Number(arg("--minutes", "6"));
 const idleMean = Number(arg("--idle-mean", "120"));        // seconds a person is away between tasks
@@ -60,6 +66,7 @@ const vmFor = (i: number) => new FirecrackerVm({
   snapshotDir: `${pristineDir}`, sessionDir: `${RUN}/sessions/${i}`, guestWorkspace: "/work",
 });
 function sandboxFor(i: number, ws: string): Sandroute {
+  if (isKata) return new Sandroute({ workspace: ws, workspacePath: "/work", vm: new KataVm(String(i), RUN), allInVm: true, idleMs: design === "kata-cold" ? windowMs : undefined });
   const common = { workspace: ws, workspacePath: "/work", vm: vmFor(i) };
   if (design === "oxroute") return new Sandroute({ ...common, idleMs: windowMs, light: new Sandbox({ workspace: ws, mountAt: "/work" }) });
   return new Sandroute({ ...common, allInVm: true, idleMs: design === "suspend" ? windowMs : undefined });
@@ -75,6 +82,12 @@ const ownChildren = (name: string) => readdirSync("/proc").filter((p) => /^\d+$/
     return stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")")) === name && Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]) === process.pid;
   } catch { return false; }
 })());
+// A Kata pod is a hypervisor, a virtiofs daemon and a shim, all owned by root, so only RSS is readable.
+const kataProcs = () => readdirSync("/proc").filter((p) => /^\d+$/.test(p) && ["cloud-hyperviso", "virtiofsd", "containerd-shim"].includes((() => { try { return readFileSync(`/proc/${p}/comm`, "utf8").trim(); } catch { return ""; } })()));
+const rss = (pid: string) => { try { return Number(/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/status`, "utf8"))![1]) / 1024; } catch { return 0; } };
+const vmProcs = () => isKata ? kataProcs() : ownChildren("firecracker");
+const vmCount = (ps: string[]) => isKata ? ps.filter((p) => { try { return readFileSync(`/proc/${p}/comm`, "utf8").trim() === "cloud-hyperviso"; } catch { return false; } }).length : ps.length;
+const vmMem = (pid: string) => isKata ? rss(pid) : pss(pid);
 const pss = (pid: string) => { try { return Number(/Pss:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"))![1]) / 1024; } catch { return 0; } };
 // CPU a process has used so far, in clock ticks, so the sampler can say who is using the machine
 const ticks = (pid: string | number) => { try { const f = readFileSync(`/proc/${pid}/stat`, "utf8"); const r = f.slice(f.lastIndexOf(")") + 2).split(" "); return Number(r[11]) + Number(r[12]); } catch { return 0; } };
@@ -139,7 +152,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
 // ---- run ----------------------------------------------------------------------------------
 const baseMem = meminfo("MemAvailable");
 let startedAt = Date.now();
-if (!existsSync(`${pristineDir}`) || !readdirSync(pristineDir).some((f) => f.endsWith(".mem"))) {
+if (!isKata && (!existsSync(`${pristineDir}`) || !readdirSync(pristineDir).some((f) => f.endsWith(".mem")))) {
   const warm = vmFor(-1); await warm.boot(`${RUN}/tenants/warm`).catch(() => {}); await warm.stop();
 }
 const sbs: Sandroute[] = [];
@@ -147,7 +160,7 @@ for (let i = 0; i < N; i++) {
   const ws = `${RUN}/tenants/t${i}`; cpSync(fixture, ws, { recursive: true });
   sbs.push(sandboxFor(i, ws));
 }
-if (design === "kept") for (let i = 0; i < N; i += 8) await Promise.all(sbs.slice(i, i + 8).map((s) => s.run("true")));   // every tenant's machine is up from the start
+if (design === "kept" || design === "kata") for (let i = 0; i < N; i += 8) await Promise.all(sbs.slice(i, i + 8).map((s) => s.run("true")));   // every tenant's machine is up from the start
 
 if (process.argv.includes("--calibrate")) {
   // one tenant, no think time, no one else: the cost of the calls themselves
@@ -171,12 +184,12 @@ const endAt = startedAt + minutes * 60_000;
 let prevCpu = cpuNow(), prevSelf = ticks(process.pid), prevFc = new Map<string, number>();
 const sampler = setInterval(() => {
   const cpu = cpuNow(), d = cpu.map((v, k) => v - prevCpu[k]), tot = d.reduce((a, b) => a + b, 0) || 1; prevCpu = cpu;
-  const fc = ownChildren("firecracker");
+  const fc = vmProcs();
   // percent of one core, for this harness and for its microVMs (those still alive)
   const self = ticks(process.pid), selfPct = self - prevSelf; prevSelf = self;
   let fcPct = 0; const nowFc = new Map<string, number>(); for (const p of fc) { const t = ticks(p); nowFc.set(p, t); fcPct += t - (prevFc.get(p) ?? t); } prevFc = nowFc;
   const free = meminfo("MemAvailable"), diskFree = (() => { const f = statfsSync(RUN); return (f.bavail * f.bsize) / 2 ** 30; })();
-  const row = { t: Math.round((Date.now() - startedAt) / 1000), memAvailMiB: Math.round(free), fcCount: fc.length, fcPssMiB: Math.round(fc.reduce((a, p) => a + pss(p), 0)),
+  const row = { t: Math.round((Date.now() - startedAt) / 1000), memAvailMiB: Math.round(free), fcCount: vmCount(fc), fcPssMiB: Math.round(fc.reduce((a, p) => a + vmMem(p), 0)),
     cpuBusy: +(100 * (1 - (d[3] + d[4]) / tot)).toFixed(1), harnessCore: selfPct, microVMCores: +(fcPct / 100).toFixed(2), iowait: +(100 * d[4] / tot).toFixed(1), load1: Number(readFileSync("/proc/loadavg", "utf8").split(" ")[0]),
     diskFreeGiB: +diskFree.toFixed(1), sessionsGiB: +(dirBytes(`${RUN}/sessions`) / 2 ** 30).toFixed(2), active: activeTurns };
   samples.push(row);
@@ -187,7 +200,7 @@ await Promise.all(sbs.map((s, i) => tenant(i, s, endAt, `${RUN}/tenants/t${i}`))
 clearInterval(sampler);
 const wall = (Date.now() - startedAt) / 1000;
 await Promise.all(sbs.map((s) => s.stop()));
-const leftover = ownChildren("firecracker").length;
+const leftover = vmCount(vmProcs());
 
 // ---- report -------------------------------------------------------------------------------
 // Some calls are slow because the command is: an agent waiting on something runs a sleep, and
