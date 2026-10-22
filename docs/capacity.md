@@ -10,7 +10,7 @@ this says what that means, how it was measured, and what it does not show.
 
 ## What was compared
 
-Three ways of giving each tenant a sandbox, all driven through the same `Sandroute` class so the
+Five ways of giving each tenant a sandbox, all driven through the same `Sandroute` class so the
 comparison is between designs and not between implementations.
 
 **kept** is a Firecracker microVM per tenant, started up front and never released. It is the simple
@@ -23,6 +23,14 @@ isolated by a VM, so it is the one the claim has to beat.
 **oxroute** runs commands that only read, search and edit files as native processes inside a fresh
 namespace sandbox with no VM at all, and uses a microVM only for commands that run code. The same
 release as `suspend` applies to its VM.
+
+**kata** is a Kata Containers pod per tenant, driven through the Kubernetes CRI (`crictl` against
+containerd with Kata 4.3.1 as its runtime, Cloud Hypervisor as the VMM, virtio-fs for the workspace),
+kept up for the whole run. Kata is what a Kubernetes operator picks to hold hostile tenants apart, since a
+plain pod shares the host kernel. Each pod's guest has 1 vCPU and 256 MiB, like the Firecracker VMs.
+
+**kata-cold** is the same, but a pod is deleted after the idle window and the next command boots a new
+one. Kata has no snapshot to release a pod to, so deleting it is the only way it gives memory back.
 
 Both released designs use the same release, which matters. A release that writes the VM's whole memory
 to disk is expensive, and it was the first thing to fail (see below). A guest that holds nothing worth
@@ -83,6 +91,27 @@ Where each design stops, with the best window found for each. A design "passes" 
 | suspend, 5 second window | 416 (384 on two seeds) | 448, p99 4.7s | cpu, then memory |
 | oxroute, 30 second window | 576 (two seeds, p99 1.2s and 1.4s) | 608, p99 3.1s | cpu |
 
+Kata on the same machine, the same recorded sessions and the same target:
+
+| design | passes up to | fails at | what runs out |
+|---|---|---|---|
+| kata | 52 (one seed; 48 on another seed ran out of memory while starting) | 56, out of memory while starting | memory |
+| kata-cold, 30 second window | 48 (p99 1.25s) | 64, p99 1.85s | boot cost: every wake boots a VM |
+
+The best Kata result is about 50 tenants. `oxroute` passed 576, so roughly eleven times as many. A kept Kata
+pod costs about 150 MiB of host memory by the drop in available memory (the sum of process RSS overstates
+it), against 30 to 40 MiB for a Firecracker VM restored from a shared snapshot. `kata-cold` frees the
+memory of idle tenants but pays a VM boot, 0.75 seconds with the image cached, on the first command of every
+turn, which is why its p99 sits near the 1.5 second target from 48 tenants on.
+
+What this does not say. Kata here is untuned: no VM templating, no memory ballooning or free page
+reporting, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
+(`p50` 50 to 80 ms, against a few ms for the vsock agent). The calibration that sets each call's own time
+was taken under Firecracker and is shared, so that per call cost counts against Kata. And the isolation is
+not the same: Kata puts every command in a VM, while `oxroute` runs the fixed-utility tier in a namespace
+sandbox that shares the host kernel. The ratio holds for this workload, where most commands only read and
+edit files.
+
 The machine has 4 cores and 7 GiB. Each microVM is 256 MiB and they share one pristine snapshot, which
 is why a resident VM costs only about 30 to 40 MiB.
 
@@ -103,7 +132,8 @@ it, and the ratio is 1.3 to 1.4.
 
 ## How this relates to E2B
 
-E2B is the obvious comparison, and no measurement of it has been made. The `suspend` design above is
+E2B is the obvious comparison, and no measurement of it has been made. The Kata results above are the
+measured comparison against a hardened-container design. The `suspend` design above is
 built from the same parts and approximates its approach: a Firecracker microVM per sandbox, restored from a
 pre-booted template snapshot, and paused and resumed. It differs in ways that matter.
 
@@ -115,8 +145,12 @@ resume as taking about a second, which includes fetching from object storage whe
 The benchmark here has none of the object storage, orchestrator, databases or firewall, so its restore
 times, tens of milliseconds, are not comparable with a hosted service's.
 
-A real comparison needs one of two things. Self-hosting E2B's infrastructure on comparable hardware, which
-needs KVM, Postgres, Redis, ClickHouse and object storage and so a machine with more room than this one. Or
+A real comparison needs one of two things. Self-hosting E2B's infrastructure on comparable hardware. Its
+[local development guide](https://github.com/e2b-dev/infra/blob/main/DEV-LOCAL.md) asks for 8 GB of RAM at
+least (16 recommended, with huge pages reserving about 4 GB), root, KVM, Postgres, Redis and ClickHouse. The
+services build and the three databases run without root on this 7 GiB machine, and the orchestrator needs
+root for NBD, huge pages and TAP devices. It was not run, because the memory left after E2B's own
+processes would decide the result. Or
 its hosted API, which can compare create and resume latency and price but not tenants per machine, since
 the hardware is theirs. Until then the claim is against a microVM per tenant with snapshot pause and
 resume, the design E2B and similar services use, and not against any of them.
@@ -158,4 +192,5 @@ snapshot, and the read tool failing on a directory.
     npx tsx bench/collect.mts                 # record sessions, needs opencode and its free tier
     npx tsx bench/tenants.mts --calibrate --design kept --tenants 1
     npx tsx bench/tenants.mts --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
+    npx tsx bench/tenants.mts --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/kata-vm.mts
     npx tsx bench/report.mts
