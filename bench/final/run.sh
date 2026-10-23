@@ -3,7 +3,7 @@
 # other sessions. Anything else using the cpu moves a design's limit, so the script waits for a
 # quiet machine, records what it was running on, and refuses to start otherwise.
 #
-#   bench/final/run.sh                       every series, 3 seeds, 6 minutes a run
+#   bench/final/run.sh                       every series, 3 seeds, 6 minutes a run: about 8 to 11 hours
 #   SEEDS="1 2" ONLY="oxroute gvisor" bench/final/run.sh
 #
 # Each series steps up through its levels. A level is run once per seed, and the series stops at the
@@ -43,12 +43,14 @@ echo -e "series\tdesign\ttenants\tseed\tp99ms\tmet\taborted\tpeakcpu\tminavailMi
 # series NAME "design flags" WINDOW_MS IDLE_MEAN "levels" [cri runtime]
 series() {
   local name=$1 flags=$2 win=$3 idle=$4 levels=$5 rt=${6:-}
+  [ -n "${SMOKE:-}" ] && levels=${levels%% *}   # one level each, to check the script itself
   [ -n "$ONLY" ] && [[ " $ONLY " != *" $name "* ]] && return
   echo "=== $name  ($flags, window ${win}ms, idle-mean ${idle}s)"
   local design bal=""; design=$(echo $flags | awk "{print \$2}"); [[ "$flags" == *--balloon* ]] && bal="-balloon"
   for n in $levels; do
     local pass=0 total=0
     for s in $SEEDS; do
+      [ "$n" = "${levels%% *}" ] && [ "$s" != "${SEEDS%% *}" ] && continue   # the lowest level is only a sanity run
       clean
       CRI_CONFIG=$CRICFG CRI_RUNTIME=$rt timeout 1500 npx tsx bench/tenants.mts $flags --tenants "$n" --minutes "$MINUTES" --idle-mean "$idle" --window "$win" --seed "$s" --out "$OUT/raw" 2>&1 | tail -1 | cut -c1-200
       local f="$OUT/raw/$design$bal-n$n-w$win-i$idle-s$s.json"
@@ -63,18 +65,18 @@ series() {
   done
 }
 
-series kept          "--design kept"               30000 120 "96 112 128 144"
-series kept-balloon  "--design kept --balloon"     30000 120 "128 144 160 176"
-series suspend       "--design suspend"             5000 120 "352 384 416 432 448"
-series oxroute       "--design oxroute"            30000 120 "480 512 544 576 608"
-series gvisor        "--design gvisor"             30000 120 "128 160 176 192 208" runsc
-series gvisor-cold   "--design gvisor-cold"        30000 120 "64 80 96 112 128" runsc
-series kata          "--design kata"               30000 120 "32 40 48 52 56"
-series kata-cold     "--design kata-cold"          30000 120 "32 40 48 56 64"
+series kept          "--design kept"               30000 120 "112 128 144"
+series kept-balloon  "--design kept --balloon"     30000 120 "144 160 176"
+series suspend       "--design suspend"             5000 120 "384 416 432"
+series oxroute       "--design oxroute"            30000 120 "544 576 608"
+series gvisor        "--design gvisor"             30000 120 "176 192 208" runsc
+series gvisor-cold   "--design gvisor-cold"        30000 120 "96 112 128" runsc
+series kata          "--design kata"               30000 120 "40 48 56"
+series kata-cold     "--design kata-cold"          30000 120 "40 48 56"
 # a quieter population: a person away five minutes between tasks instead of two. The levels are
 # guesses above the busy ones; a series that fails at its first level says its limit is lower.
-series oxroute-quiet      "--design oxroute"       30000 300 "640 768 896 1024"
-series suspend-quiet      "--design suspend"        5000 300 "448 512 576 640"
-series gvisor-cold-quiet  "--design gvisor-cold"   30000 300 "128 160 192 224" runsc
-series kata-cold-quiet    "--design kata-cold"     30000 300 "48 64 80 96"
+series oxroute-quiet      "--design oxroute"       30000 300 "768 896 1024"
+series suspend-quiet      "--design suspend"        5000 300 "512 576 640"
+series gvisor-cold-quiet  "--design gvisor-cold"   30000 300 "160 192 224" runsc
+series kata-cold-quiet    "--design kata-cold"     30000 300 "64 80 96"
 echo "done; see $OUT/summary.tsv"
