@@ -196,6 +196,20 @@ Sources: [e2b-dev/infra](https://github.com/e2b-dev/infra),
 [E2B snapshots](https://docs.e2b.dev/sandbox/snapshots),
 [Fly.io on E2B](https://fly.io/learn/fly-vs-e2b/).
 
+## Setting the same VMMs up the way the products do
+
+`bench/tenants.mts` takes `--vmm cloud-hypervisor` (a backend in `src/cloud-hypervisor.ts`, a subclass of the Firecracker one),
+`--vcpus`, `--mem`, `--balloon` and `--no-snapshot` (cold boot every VM), and the designs `reclaim` (kill an idle VM, cold boot the
+next) and the existing `kept` and `suspend`. That is enough to express the setups the earlier posts describe: Claude Code reclaims
+an idle VM and keeps its disk, Instinct (E2B) is 2 vCPU and 1.9 GB with snapshot resume, and Muse is Cloud Hypervisor at 2 vCPU and
+8 GB with a balloon. `bench/final/run.sh` has a series for each.
+
+Cloud Hypervisor needs a guest kernel with PCI, which the Firecracker kernel is built without, so it boots Kata's 6.18 kernel with the
+same root image and the same guest agent. Its snapshot is a directory, and `memory_restore_mode=CopyOnWrite` lets many VMs share one,
+as Firecracker does: two VMs restored from one snapshot held 14 MiB each. A VM restored from a shared snapshot costs far less than one
+cold booted. Eight tenants, idle: about 37 MiB each restored under Firecracker and 52 under Cloud Hypervisor, against about 123 and 167
+cold booted. These footprints are from smoke tests, not the final run.
+
 ## Compared with the sandboxes in the earlier posts
 
 The two earlier posts on this blog measured three products from the inside: Claude Code, Instinct (E2B) and

@@ -9,6 +9,8 @@ K=${KATA_HOME:-$HOME/kata}; G=${GVISOR_HOME:-$HOME/gvisor}; F=$K/final
 mkdir -p "$F/run" "$F/cni.d"
 # Kata's own defaults, pointed at the unpacked release, with a 256 MiB guest like the Firecracker VMs and free page reporting on, as Muse has
 sed "s#/opt/kata#$K/root/opt/kata#g; s/^default_memory = .*/default_memory = 256/; s/^reclaim_guest_freed_memory = false/reclaim_guest_freed_memory = true/" "$K/root/opt/kata/share/defaults/kata-containers/configuration-clh.toml" > "$F/kata-clh.toml"
+# and Kata exactly as shipped (2 GiB guest, no free page reporting), for the vanilla series
+sed "s#/opt/kata#$K/root/opt/kata#g" "$K/root/opt/kata/share/defaults/kata-containers/configuration-clh.toml" > "$F/kata-vanilla-clh.toml"
 printf 'binary_name = "%s/runsc"\n[runsc_config]\n  platform = "systrap"\n' "$G" > "$F/runsc.toml"
 echo '{"cniVersion":"1.0.0","name":"kata-bridge","plugins":[{"type":"bridge","bridge":"kata0","isGateway":true,"ipMasq":false,"ipam":{"type":"host-local","ranges":[[{"subnet":"10.89.0.0/16"}]]}}]}' > "$F/cni.d/10-bridge.conflist"
 cat > "$F/containerd.toml" <<EOT
@@ -27,6 +29,12 @@ state = "$F/data/state"
   privileged_without_host_devices = true
   [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata.options]
     ConfigPath = "$F/kata-clh.toml"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata-vanilla]
+  runtime_type = "io.containerd.kata.v2"
+  runtime_path = "$K/root/opt/kata/bin/containerd-shim-kata-v2"
+  privileged_without_host_devices = true
+  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata-vanilla.options]
+    ConfigPath = "$F/kata-vanilla-clh.toml"
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"
   runtime_path = "$G/containerd-shim-runsc-v1"

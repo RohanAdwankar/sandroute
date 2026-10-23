@@ -9,6 +9,8 @@
 //   kept      a microVM per tenant, booted up front and never released. The simple thing.
 //   suspend   a microVM per tenant, snapshotted to disk after an idle window and restored on
 //             the next command. The strongest alternative that keeps every tenant isolated.
+//   reclaim   a microVM per tenant that is killed after an idle window and cold booted on the next command,
+//             which is how Claude Code is described to work.
 //   oxroute   fixed utilities run in a per-command namespace sandbox with no VM at all, and a
 //             microVM only for the commands that need one, suspended the same way.
 //   kata      a Kata Containers pod per tenant through the Kubernetes CRI, kept up. The VM-per-tenant
@@ -22,19 +24,23 @@
 import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { CloudHypervisorVm } from "../src/cloud-hypervisor.js";
 import { FirecrackerVm } from "../src/firecracker.js";
 import { CriVm } from "./cri-vm.mts";
 import { Sandbox } from "../src/sandbox.js";
 import { Sandroute } from "../src/sandroute.js";
 
 const arg = (f: string, d: string) => { const i = process.argv.indexOf(f); return i > 0 ? process.argv[i + 1] : d; };
-const design = arg("--design", "oxroute") as "kept" | "suspend" | "oxroute" | "kata" | "kata-cold" | "gvisor" | "gvisor-cold";
+const design = arg("--design", "oxroute") as "kept" | "suspend" | "reclaim" | "oxroute" | "kata" | "kata-cold" | "gvisor" | "gvisor-cold";
 const isCri = design.startsWith("kata") || design.startsWith("gvisor");
 const N = Number(arg("--tenants", "16"));
 const minutes = Number(arg("--minutes", "6"));
 const idleMean = Number(arg("--idle-mean", "120"));        // seconds a person is away between tasks
 const windowMs = Number(arg("--window", "30000"));         // how long a microVM sits idle before it is suspended
 const memMiB = Number(arg("--mem", "256"));
+const vmm = arg("--vmm", "firecracker") as "firecracker" | "cloud-hypervisor";
+const vcpus = Number(arg("--vcpus", "1"));
+const noSnapshot = process.argv.includes("--no-snapshot");   // cold boot every VM; nothing to restore from
 const balloon = process.argv.includes("--balloon");           // return freed guest memory to the host
 const seed = Number(arg("--seed", "1"));
 const tracesDir = arg("--traces", path.resolve(import.meta.dirname, "traces"));
@@ -64,15 +70,22 @@ const medianThink = (t: Trace) => { const x = t.calls.map((c) => c.thinkMs).filt
 
 // ---- the sandboxes ------------------------------------------------------------------------
 rmSync(RUN, { recursive: true, force: true }); mkdirSync(`${RUN}/tenants`, { recursive: true });
-const vmFor = (i: number) => new FirecrackerVm({
-  bin: `${A}/firecracker`, kernel: `${A}/vmlinux-6.1.128`, rootfs: `${A}/rootfs.ext4`, vcpus: 1, memMiB, balloon, bootArgs: balloon ? "page_reporting.page_reporting_order=3" : undefined,
-  snapshotDir: `${pristineDir}`, sessionDir: `${RUN}/sessions/${i}`, guestWorkspace: "/work",
+// Cloud Hypervisor needs PCI in the guest kernel, which the Firecracker one is built without, so it uses Kata's
+const KATA = process.env.KATA_HOME ?? "/home/rohan/kata";
+const ch = vmm === "cloud-hypervisor";
+const vmFor = (i: number) => new (ch ? CloudHypervisorVm : FirecrackerVm)({
+  bin: ch ? `${KATA}/root/opt/kata/bin/cloud-hypervisor` : `${A}/firecracker`,
+  kernel: ch ? `${KATA}/root/opt/kata/share/kata-containers/vmlinux.container` : `${A}/vmlinux-6.1.128`,
+  rootfs: `${A}/rootfs.ext4`, vcpus, memMiB, balloon, bootArgs: balloon ? "page_reporting.page_reporting_order=3" : undefined,
+  snapshotDir: noSnapshot ? undefined : ch ? `${pristineDir}-ch` : pristineDir, sessionDir: `${RUN}/sessions/${i}`, guestWorkspace: "/work",
 });
 function sandboxFor(i: number, ws: string): Sandroute {
   if (isCri) return new Sandroute({ workspace: ws, workspacePath: "/work", vm: new CriVm(String(i), RUN), allInVm: true, idleMs: design.endsWith("-cold") ? windowMs : undefined });
   const common = { workspace: ws, workspacePath: "/work", vm: vmFor(i) };
   if (design === "oxroute") return new Sandroute({ ...common, idleMs: windowMs, light: new Sandbox({ workspace: ws, mountAt: "/work" }) });
-  return new Sandroute({ ...common, allInVm: true, idleMs: design === "suspend" ? windowMs : undefined });
+  // a VM without suspend() is killed on release, which is what reclaim is
+  if (design === "reclaim") (common.vm as { suspend?: unknown }).suspend = undefined;
+  return new Sandroute({ ...common, allInVm: true, idleMs: design === "suspend" || design === "reclaim" ? windowMs : undefined });
 }
 
 // ---- what is measured ---------------------------------------------------------------------
@@ -92,7 +105,7 @@ const comm = (p: string) => { try { return readFileSync(`/proc/${p}/comm`, "utf8
 const cmdline = (p: string) => { try { return readFileSync(`/proc/${p}/cmdline`, "utf8").replaceAll("\0", " "); } catch { return ""; } };
 const podProcs = () => readdirSync("/proc").filter((p) => /^\d+$/.test(p) && (design.startsWith("gvisor") ? /runsc|gvisor/.test(comm(p) + cmdline(p)) : ["cloud-hyperviso", "virtiofsd", "containerd-shim"].includes(comm(p))));
 const rss = (pid: string) => { try { return Number(/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/status`, "utf8"))![1]) / 1024; } catch { return 0; } };
-const vmProcs = () => isCri ? podProcs() : ownChildren("firecracker");
+const vmProcs = () => isCri ? podProcs() : ownChildren(ch ? "cloud-hyperviso" : "firecracker");
 const vmCount = (ps: string[]) => isCri ? ps.filter((p) => comm(p) === (design.startsWith("gvisor") ? "containerd-shim" : "cloud-hyperviso")).length : ps.length;
 const vmMem = (pid: string) => isCri ? rss(pid) : pss(pid);
 const pss = (pid: string) => { try { return Number(/Pss:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"))![1]) / 1024; } catch { return 0; } };
@@ -159,7 +172,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
 // ---- run ----------------------------------------------------------------------------------
 const baseMem = meminfo("MemAvailable");
 let startedAt = Date.now();
-if (!isCri) {
+if (!isCri && !noSnapshot) {
   const warm = vmFor(-1); await warm.boot(`${RUN}/tenants/warm`).catch(() => {}); await warm.stop();
 }
 const sbs: Sandroute[] = [];
@@ -217,7 +230,7 @@ const lat = recs.map((r) => Math.max(0, r.ms - r.ownMs)), woke = recs.filter((r)
 const max = (k: string) => Math.max(...samples.map((s) => s[k]), 0);
 const mean = (k: string) => samples.length ? samples.reduce((a, s) => a + s[k], 0) / samples.length : 0;
 const result = {
-  design, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
+  design, vmm, vcpus, noSnapshot, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
   turns: turns.length, calls: recs.length, errors: errs.length, errorSample: [...new Set(errs.map((e) => `${e.tool}: ${e.err}`))].slice(0, 5),
   observedDutyCycle: +(turns.reduce((a, b) => a + b, 0) / 1000 / (N * wall)).toFixed(3),
   // what the design added to each call: its time less the same call's calibrated time
@@ -234,7 +247,7 @@ const result = {
 };
 const outDir = arg("--out", path.join(import.meta.dirname, "results"));
 mkdirSync(outDir, { recursive: true });
-const name = `${design}${balloon ? "-balloon" : ""}-n${N}-w${windowMs}-i${idleMean}-s${seed}`;
+const name = arg("--name", `${design}${balloon ? "-balloon" : ""}-n${N}-w${windowMs}-i${idleMean}-s${seed}`);
 writeFileSync(path.join(outDir, `${name}.json`), JSON.stringify({ ...result, samples }, null, 1));
 console.log(`${name.padEnd(30)} calls ${String(result.calls).padStart(4)}  p50 ${String(result.latencyMs.p50).padStart(4)}  p95 ${String(result.latencyMs.p95).padStart(5)}  p99 ${String(result.latencyMs.p99).padStart(5)}ms  ` +
   `VMs peak ${String(result.peak.microVMs).padStart(3)} (${result.peak.vmPssMiB} MiB)  disk ${result.peak.sessionsGiB} GiB  cpu ${result.mean.cpuBusy}%/${result.peak.cpuBusy}%  err ${result.errors}  ${result.slo.met ? "SLO met" : aborted ? `ABORTED ${aborted}` : "SLO missed"}`);
