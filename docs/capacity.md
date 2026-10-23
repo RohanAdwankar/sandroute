@@ -263,6 +263,21 @@ as Firecracker does: two VMs restored from one snapshot held 14 MiB each. A VM r
 cold booted. Eight tenants, idle: about 37 MiB each restored under Firecracker and 52 under Cloud Hypervisor, against about 123 and 167
 cold booted. These footprints are from smoke tests, not the final run.
 
+### What the Claude Code box showed
+
+A probe inside a Claude Code box (kept out of the repo, since the log holds an access token) found a custom `6.18.44-fc-v153`
+Firecracker kernel built with PCI, 4 vCPU and 16 GiB with no swap, a balloon with free page reporting (in 2 MiB chunks,
+`page_reporting_order=9`), transparent hugepages on madvise and no hugepages, and a 256 GiB ext4 disk of which about 30 GiB
+is usable. The kernel brings up only 3.2 of the 16 GiB at boot (`deferred_init=lazy`), so the host does not have to back it all.
+The one wake observed was a cold boot, with a new boot id, onto a disk that had kept `/tmp`. That is one observation: the kernel
+has VMGENID built in, so it could be restored from a snapshot, and this boot does not show whether it ever is.
+
+The idea that follows is to keep a disk per tenant, kill the VM when idle and cold boot it on the next command, which writes no
+memory snapshots. Tried here, at 576 tenants with every other setting the same, oxroute as it stands held 239 VMs at its peak
+(CPU-bound, p99 4.3 s that day) and the cold boot variant ran out of memory with 78 VMs resident. A VM cold booted costs about
+123 MiB against about 37 for one restored from the shared snapshot, so what is saved in snapshot writes is lost in memory.
+Cold booting suits a host with room to spare, as Claude Code's evidently is, and not a 7 GiB laptop.
+
 ## Compared with the sandboxes in the earlier posts
 
 The two earlier posts on this blog measured three products from the inside: Claude Code, Instinct (E2B) and
