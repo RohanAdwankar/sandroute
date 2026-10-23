@@ -41,6 +41,7 @@ const memMiB = Number(arg("--mem", "256"));
 const vmm = arg("--vmm", "firecracker") as "firecracker" | "cloud-hypervisor";
 const vcpus = Number(arg("--vcpus", "1"));
 const noSnapshot = process.argv.includes("--no-snapshot");   // cold boot every VM; nothing to restore from
+const killOnRelease = process.argv.includes("--kill-on-release");   // release a VM by killing it: nothing is written, the next wake is a cold boot
 const balloon = process.argv.includes("--balloon");           // return freed guest memory to the host
 const seed = Number(arg("--seed", "1"));
 const tracesDir = arg("--traces", path.resolve(import.meta.dirname, "traces"));
@@ -82,9 +83,9 @@ const vmFor = (i: number) => new (ch ? CloudHypervisorVm : FirecrackerVm)({
 function sandboxFor(i: number, ws: string): Sandroute {
   if (isCri) return new Sandroute({ workspace: ws, workspacePath: "/work", vm: new CriVm(String(i), RUN), allInVm: true, idleMs: design.endsWith("-cold") ? windowMs : undefined });
   const common = { workspace: ws, workspacePath: "/work", vm: vmFor(i) };
+  if (design === "reclaim" || killOnRelease) (common.vm as { suspend?: unknown }).suspend = undefined;
   if (design === "oxroute") return new Sandroute({ ...common, idleMs: windowMs, light: new Sandbox({ workspace: ws, mountAt: "/work" }) });
   // a VM without suspend() is killed on release, which is what reclaim is
-  if (design === "reclaim") (common.vm as { suspend?: unknown }).suspend = undefined;
   return new Sandroute({ ...common, allInVm: true, idleMs: design === "suspend" || design === "reclaim" ? windowMs : undefined });
 }
 
@@ -230,7 +231,7 @@ const lat = recs.map((r) => Math.max(0, r.ms - r.ownMs)), woke = recs.filter((r)
 const max = (k: string) => Math.max(...samples.map((s) => s[k]), 0);
 const mean = (k: string) => samples.length ? samples.reduce((a, s) => a + s[k], 0) / samples.length : 0;
 const result = {
-  design, vmm, vcpus, noSnapshot, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
+  design, vmm, vcpus, noSnapshot, killOnRelease, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
   turns: turns.length, calls: recs.length, errors: errs.length, errorSample: [...new Set(errs.map((e) => `${e.tool}: ${e.err}`))].slice(0, 5),
   observedDutyCycle: +(turns.reduce((a, b) => a + b, 0) / 1000 / (N * wall)).toFixed(3),
   // what the design added to each call: its time less the same call's calibrated time
