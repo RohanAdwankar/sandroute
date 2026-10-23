@@ -263,6 +263,20 @@ as Firecracker does: two VMs restored from one snapshot held 14 MiB each. A VM r
 cold booted. Eight tenants, idle: about 37 MiB each restored under Firecracker and 52 under Cloud Hypervisor, against about 123 and 167
 cold booted. These footprints are from smoke tests, not the final run.
 
+### Where the time goes at oxroute's limit, and why so many guests hold state
+
+Profiling one 576-tenant run (mean over the run, 4 hardware threads): 6% user, 19% system, 16% inside the VMs, 18% waiting on disk
+and 41% idle. In the busiest third of the samples (above 85% busy) disk wait is 34%, system 26%, guest 24% and user 7%. The kernel's
+pressure counters say tasks were stalled on I/O 28% of the time on average (83% at the worst moment) and on memory 12% (49% at worst).
+So at the limit the machine is waiting on disk and short of memory more than it is short of CPU, and the harness process itself spends
+more time in the kernel (1430 against 607 percent-seconds of user time) than in its own code.
+
+Most of that disk work is one cause. Replaying each recorded session once through a single oxroute tenant and asking the guest what it
+holds that the workspace does not: 1 of the 18 sessions that touch a VM leaves anything, one scratch file in `/tmp`. A guest with any
+such file cannot be thrown away, so every later release of that tenant writes a full 256 MiB memory snapshot, and that tenant stays that way
+for the run. With 576 tenants picking sessions at random, about 11% hit that session at least once, which is about 65 tenants and about 16 GiB,
+the 15 to 18 GiB of snapshots seen at the limit. A scratch file is cheap to keep as a file. Keeping it as a memory snapshot is the expensive way.
+
 ### What the Claude Code box showed
 
 A probe inside a Claude Code box (kept out of the repo, since the log holds an access token) found a custom `6.18.44-fc-v153`
