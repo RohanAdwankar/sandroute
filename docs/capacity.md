@@ -196,6 +196,35 @@ Sources: [e2b-dev/infra](https://github.com/e2b-dev/infra),
 [E2B snapshots](https://docs.e2b.dev/sandbox/snapshots),
 [Fly.io on E2B](https://fly.io/learn/fly-vs-e2b/).
 
+## What the public documentation claims
+
+The Firecracker paper (Agache et al., NSDI 2020, the AWS Lambda one) says: "Modern commodity servers contain up to 1TB of RAM, while
+Lambda functions use as little as 128MB, requiring up to 8000 functions on a server to fill the RAM (or more due to soft allocation)", and
+"We have tested memory and CPU oversubscription ratios of over 20x, and run in production with ratios as high as 10x, with no issues." It
+measures a VMM overhead of about 3MB for Firecracker, 13MB for Cloud Hypervisor and 131MB for QEMU, and claims under 5MB and a boot under
+125 ms. Those are the figures that can be checked against the paper itself. A demonstration of 4000 microVMs on a 72 vCPU, 512 GB host
+is reported by LWN and is not in the paper. The other products named here (E2B, Modal, Daytona, Vercel, Fly) publish pricing and
+timeouts, not a tenants-per-host figure.
+
+Stated as tenants per GiB, Lambda's slots are 8000 per 1000 GiB at 128 MB, so about 8 a GiB before oversubscription and about 78 at the
+10x production ratio (my arithmetic; the paper does not state it as a density). On this 7.05 GiB machine, with each tenant counted
+at its 256 MiB guest: `oxroute` holds 576 tenants, which is 82 a GiB and an oversubscription of 20x; `suspend` holds 416, 59 a GiB and
+15x; the kept Firecracker design 128, 18 a GiB and 4.5x; Kata about 50, 7 a GiB and 1.8x. gVisor has no fixed guest size and holds 192, 27 a
+GiB. So the Firecracker designs here are inside the range the paper says was tested and above the ratio it says ran in production.
+The comparison is loose: Lambda functions are short and bursty, these tenants are agent sessions replayed from real recordings.
+
+## Getting oxroute toward 1000 tenants
+
+At its limit (576 to 608 tenants) oxroute is not short of memory, with 800 MiB or more free. The calls that fail the target are the ones
+that wake a VM: about 1400 wakes a run, median 210 ms and p99 3.2 s, with cpu peaking at 95% and disk wait at 65 to 80% on a 2 core
+machine. Two cheap changes were tried (rough, one seed):
+
+A 128 MiB guest halved the session snapshots on disk (7.8 GiB against 15 to 18) and did not help: 640 tenants missed at p99 4.1 s, so the
+limit is cpu and not what a snapshot writes. A quieter population did: with people away 5 minutes between tasks instead of 2, 768
+tenants pass at p99 0.5 s and 30% cpu, and 1000 miss at p99 4.1 s with cpu at 98% and 13.8 GiB of snapshots. So the limit with that
+population is between 768 and 1000. Reaching 1000 on this machine needs either a quieter population or fewer VM wakes, for example by
+running code in a cheaper middle tier than a VM.
+
 ## Setting the same VMMs up the way the products do
 
 `bench/tenants.mts` takes `--vmm cloud-hypervisor` (a backend in `src/cloud-hypervisor.ts`, a subclass of the Firecracker one),
