@@ -191,6 +191,40 @@ Sources: [e2b-dev/infra](https://github.com/e2b-dev/infra),
 [E2B snapshots](https://docs.e2b.dev/sandbox/snapshots),
 [Fly.io on E2B](https://fly.io/learn/fly-vs-e2b/).
 
+## Compared with the sandboxes in the earlier posts
+
+The two earlier posts on this blog measured three products from the inside: Claude Code, Instinct (E2B) and
+Meta's Muse. What they report about each box, next to what is used here.
+
+Claude Code: a Firecracker microVM with a custom 6.18 kernel and a Rust process as PID 1, one writable 256 GB
+disk that outlives the VM and read-only shared disks for the harness. The host wakes it over vsock when a message
+arrives (430 ms to init, 6.4 s to the harness) and reclaims it when idle by destroying the processes and keeping
+the disk. The post did not record its cpu or memory. That reclaim is the same idea as the discard release here:
+the durable state lives outside the guest, so an idle guest is thrown away.
+
+Instinct: a Firecracker microVM from E2B with 2 vCPU, 1.9 GB of RAM and 29 GB of disk, running a full Ubuntu 22.04
+desktop, up in about 1.3 s, with a timeout and either a cold boot or a snapshot resume. The snapshot resume is
+the `suspend` design here.
+
+Muse: a Cloud Hypervisor microVM with 2 vCPU and 8 GB allocated, holding a systemd-nspawn container, Postgres and
+local models, kept up per user. A balloon with free page reporting returns freed pages, so an idle one costs its
+working set of about 2 GB and not 8. It is the same technique as `--balloon` here. A new one takes about 40 s to
+become ready, so they are pre-booted.
+
+This work: a Firecracker microVM with 1 vCPU and 256 MiB, restored from one shared snapshot, released after an
+idle window by snapshot or by discard, and for commands that only read and edit files, no VM at all.
+
+If each tenant were held resident the way those products describe, the 5.8 GiB this machine has free would fit
+about three of Instinct's (1.9 GB) or Muse's (2.1 GB working set) boxes. That is arithmetic on the figures in the
+posts and not a run of their software. It also is not a fair reading of them: their boxes carry the agent harness,
+a desktop, a database and models, and here the agent loop and the model live outside the VM, so the box only
+runs commands. The 256 MiB guest is one of the untested choices (see above), and a larger guest is what a heavier
+box would force.
+
+What the products share with this work is the lifecycle: durable state outside the guest, an idle guest reclaimed
+by the host, memory handed back by a balloon. What differs is how small the guest is allowed to be, which is the
+number that decides how many fit.
+
 ## What this does not show
 
 - One machine, four cores. The ceilings are cpu and memory on this box and scale with it, but the ratio
