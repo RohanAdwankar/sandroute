@@ -10,6 +10,7 @@
 //   own mount namespace   the system is read-only, and the tenant's workspace is the only
 //                         writable path and the only tenant data in sight
 //   own user namespace    no privilege outside the sandbox
+//   seccomp allowlist     about 300 system calls, no namespaces, sockets or tracing
 //   own cgroup (optional) memory and process limits per tenant
 //
 // One thing is not hidden: /proc/self/mountinfo names the host directory behind the
@@ -17,9 +18,11 @@
 // workspaces should live under a path that says nothing about the host.
 //
 // It is container-grade isolation, which is weaker than a VM: the command shares the host
-// kernel. That is why it is only for commands that run fixed, audited utilities over a
+// kernel, with a seccomp allowlist cutting what it can ask of it to about 300 system calls. That is why it is only for commands that run fixed, audited utilities over a
 // tenant's files; anything that runs code the tenant wrote goes to the microVM.
 import { spawn } from "node:child_process";
+import { closeSync, openSync } from "node:fs";
+import { filterFile } from "./seccomp.js";
 
 export interface SandboxOptions {
   workspace: string;
@@ -44,7 +47,9 @@ export interface SandboxResult {
 export function bwrapArgs(workspace: string, mountAt: string, cwd: string, env: Record<string, string> = {}): string[] {
   const e = { PATH: "/usr/bin:/bin", HOME: mountAt, LANG: "C.UTF-8", ...env };
   return [
-    "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
+    // the seccomp program arrives on descriptor 3 (see exec); a nested user namespace, the usual way to
+    // reach kernel code that needs capabilities, is switched off as well as filtered
+    "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL", "--seccomp", "3", "--die-with-parent", "--new-session", "--clearenv",
     "--ro-bind", "/usr", "/usr",
     "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64", "--symlink", "usr/sbin", "/sbin",
     "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
@@ -65,7 +70,9 @@ export class Sandbox {
       ? ["/usr/bin/sh", ["-c", 'echo $$ > "$1/cgroup.procs" && shift && exec "$@"', "sh", this.o.cgroup, ...inner]] as const
       : [inner[0], inner.slice(1)] as const;
     return new Promise((resolve) => {
-      const child = spawn(argv[0], argv[1] as string[], { stdio: ["ignore", "pipe", "pipe"] });
+      const filter = openSync(filterFile(), "r");
+      const child = spawn(argv[0], argv[1] as string[], { stdio: ["ignore", "pipe", "pipe", filter] });
+      closeSync(filter);
       const cap = this.o.maxOutputBytes ?? 10 * 2 ** 20;
       let stdout = "", stderr = "", over = false;
       const take = (into: "o" | "e") => (d: Buffer) => {
