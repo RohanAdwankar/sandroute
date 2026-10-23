@@ -93,16 +93,17 @@ Where each design stops, with the best window found for each. A design "passes" 
 | design | passes up to | fails at | what runs out |
 |---|---|---|---|
 | kept | 128 (two seeds) | 160, aborted with 289 MiB free | memory |
-| suspend, 5 second window | 416 (384 on two seeds) | 448, p99 4.7s | cpu, then memory |
-| oxroute, 30 second window | 576 (two seeds, p99 1.2s and 1.4s) | 608, p99 3.1s | cpu |
+| kept, with a balloon | 144 to 160 (160 passed on one seed and ran out of memory on another) | 176 and 192, out of memory | memory |
+| suspend, 5 second window | 416 (two seeds, p99 0.86s and 1.28s) | 432, p99 13.6s; 448, p99 4.7s with or without a balloon | cpu and disk |
+| oxroute, 30 second window | 576 (two seeds, p99 1.2s and 1.4s) | 592, p99 2.7s; 608, p99 3.1s, 2.0s, and 1.9s with a balloon | cpu |
 
 Kata on the same machine, the same recorded sessions and the same target:
 
 | design | passes up to | fails at | what runs out |
 |---|---|---|---|
-| kata | 52 (one seed; 48 on another seed ran out of memory while starting) | 56, out of memory while starting | memory |
+| kata | 48 to 52 (52 passed once and ran out of memory while starting once; 48 passed on two seeds and ran out of memory while starting on a third) | 56, out of memory while starting | memory |
 | kata-cold, 30 second window | 48 (p99 1.25s) | 64, p99 1.85s | boot cost: every wake boots a VM |
-| gvisor | 192 (two seeds, p99 1.31s and 1.38s) | 208, out of memory while starting | cpu, then memory |
+| gvisor | 192 (two seeds, p99 1.31s and 1.38s; 200 passed once at 1.48s) | 208, out of memory while starting | cpu, then memory |
 | gvisor-cold, 30 second window | 96 (p99 0.76s) | 128, p99 2.7s | cpu: creating pods costs more than it saves |
 
 The best Kata result is about 50 tenants. `oxroute` passed 576, so roughly eleven times as many. A kept Kata
@@ -123,6 +124,17 @@ between tenants. gVisor reimplements the kernel in userspace and passes only a s
 to the host, which is a smaller attack surface than a shared kernel but not a VM. `oxroute`'s file-only
 tier runs in a namespace sandbox with no system call filter, which is weaker than gVisor. Running that
 tier under gVisor instead is a design choice the numbers here do not cover.
+
+The balloon (virtio-balloon free page reporting, `--balloon`) hands back guest memory as the guest frees it:
+a VM that allocated 120 MB and freed it dropped from 184 MiB to 64 MiB in three seconds. It moves the kept
+design from 128 to about 150 tenants, because a resident VM holds less after a command that allocated. It does
+not move `suspend` or `oxroute`, which run out of cpu first.
+
+How firm these numbers are. They were taken while other work was running on the machine, including this
+write-up's own tooling, and the limits of the cpu-bound designs moved from run to run: `oxroute` passed 576 twice
+and then missed 592 and 608 on later runs. Treat each limit as good to about five percent. The final numbers
+come from `bench/final/run.sh`, which runs every series on an otherwise idle machine with three seeds and
+records the machine, the versions and the configs next to the results.
 
 What this does not say. Kata here is untuned: no VM templating, no memory ballooning or free page
 reporting, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
