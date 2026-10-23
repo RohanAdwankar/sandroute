@@ -61,6 +61,29 @@ on the host, and that trade should be weighed against the numbers below. One thi
 `/proc/self/mountinfo` names the host directory behind the workspace mount, which is the tenant's own
 and never another's.
 
+### The system call filter
+
+The namespaces hide the host from the tenant. They do not limit what the tenant may ask the kernel, and the kernel
+is where a container escape lives. The tier now also runs under a seccomp allowlist of 299 system calls, taken from
+Docker's default profile (the most reviewed list there is) and cut further: no namespaces, so no `unshare`, `setns`
+or `clone` with a namespace flag; no `mount`, `ptrace`, `bpf`, `io_uring`, `keyctl`, `perf_event_open` or
+`userfaultfd`; no sockets of any kind; no `memfd_create`. `clone3` answers "does not exist" so libc falls back to
+`clone`. A program on another architecture or using the x32 ABI is refused or killed. Capabilities are dropped, no new
+privileges can be gained, and nested user namespaces are switched off as well as filtered.
+
+What backs this up. `test/escape.test.ts` runs a probe for each of those calls from inside the sandbox and each must
+fail with EPERM; four of them also run with the filter off and must succeed there, so a pass cannot come from a probe
+that fails for another reason. It also checks that a 32-bit `int 0x80` call is killed, that the process holds no
+capabilities and cannot gain privilege, and that no sysfs, devices or host directories are visible.
+`test/seccomp-corpus.test.ts` replays all 223 light-tier calls from the recorded sessions with and without the
+filter: identical output and exit codes, none refused. The filter adds about 0.4 ms to a command of about 7.5 ms,
+measured here with the filtered command run through Node and the unfiltered one through `spawnSync`, so some of that
+is the harness. Replaying oxroute at 576 tenants with and without the filter, on the same machine and seeds, the filtered
+runs were not worse: p99 2.8 s on both seeds against 4.5 s and 4.1 s unfiltered. All four missed the target, where
+576 passed on earlier days, so the machine itself ran slower that day, which is why these numbers are rough and the
+final run on an idle machine is the one to trust. These are tests of the filter doing what it was written to do. They are not an outside review, and
+they do not cover the tenant's kernel attack surface through the 299 calls that remain.
+
 ## The tenants
 
 Twenty-six real opencode sessions were recorded: eight ordinary tasks on a small Python project (explain
@@ -122,8 +145,9 @@ limit down to 96.
 Isolation is not the same across these. Kata and Firecracker put a hardware virtualisation boundary
 between tenants. gVisor reimplements the kernel in userspace and passes only a small set of system calls
 to the host, which is a smaller attack surface than a shared kernel but not a VM. `oxroute`'s file-only
-tier runs in a namespace sandbox with no system call filter, which is weaker than gVisor. Running that
-tier under gVisor instead is a design choice the numbers here do not cover.
+tier runs in a namespace sandbox with a seccomp allowlist of about 300 system calls. That is a smaller surface than a bare
+container and still a shared kernel, so weaker than gVisor. Running that tier under gVisor instead is a design choice the
+numbers here do not cover.
 
 The balloon (virtio-balloon free page reporting, `--balloon`) hands back guest memory as the guest frees it:
 a VM that allocated 120 MB and freed it dropped from 184 MiB to 64 MiB in three seconds. It moves the kept
