@@ -35,6 +35,7 @@ const minutes = Number(arg("--minutes", "6"));
 const idleMean = Number(arg("--idle-mean", "120"));        // seconds a person is away between tasks
 const windowMs = Number(arg("--window", "30000"));         // how long a microVM sits idle before it is suspended
 const memMiB = Number(arg("--mem", "256"));
+const balloon = process.argv.includes("--balloon");           // return freed guest memory to the host
 const seed = Number(arg("--seed", "1"));
 const tracesDir = arg("--traces", path.resolve(import.meta.dirname, "traces"));
 const sloP99 = Number(arg("--slo-p99", "1500"));          // ms
@@ -64,7 +65,7 @@ const medianThink = (t: Trace) => { const x = t.calls.map((c) => c.thinkMs).filt
 // ---- the sandboxes ------------------------------------------------------------------------
 rmSync(RUN, { recursive: true, force: true }); mkdirSync(`${RUN}/tenants`, { recursive: true });
 const vmFor = (i: number) => new FirecrackerVm({
-  bin: `${A}/firecracker`, kernel: `${A}/vmlinux-6.1.128`, rootfs: `${A}/rootfs.ext4`, vcpus: 1, memMiB,
+  bin: `${A}/firecracker`, kernel: `${A}/vmlinux-6.1.128`, rootfs: `${A}/rootfs.ext4`, vcpus: 1, memMiB, balloon, bootArgs: balloon ? "page_reporting.page_reporting_order=3" : undefined,
   snapshotDir: `${pristineDir}`, sessionDir: `${RUN}/sessions/${i}`, guestWorkspace: "/work",
 });
 function sandboxFor(i: number, ws: string): Sandroute {
@@ -158,7 +159,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
 // ---- run ----------------------------------------------------------------------------------
 const baseMem = meminfo("MemAvailable");
 let startedAt = Date.now();
-if (!isCri && (!existsSync(`${pristineDir}`) || !readdirSync(pristineDir).some((f) => f.endsWith(".mem")))) {
+if (!isCri) {
   const warm = vmFor(-1); await warm.boot(`${RUN}/tenants/warm`).catch(() => {}); await warm.stop();
 }
 const sbs: Sandroute[] = [];
@@ -231,9 +232,10 @@ const result = {
   leakedMicroVMs: leftover,
   slo: { p99Ms: sloP99, met: !aborted && errs.every((e) => !/firecracker|guest agent|vsock|timed out/.test(e.err ?? "")) && pct(lat, 0.99) <= sloP99 },
 };
-mkdirSync(path.join(import.meta.dirname, "results"), { recursive: true });
-const name = `${design}-n${N}-w${windowMs}-i${idleMean}-s${seed}`;
-writeFileSync(path.join(import.meta.dirname, "results", `${name}.json`), JSON.stringify({ ...result, samples }, null, 1));
+const outDir = arg("--out", path.join(import.meta.dirname, "results"));
+mkdirSync(outDir, { recursive: true });
+const name = `${design}${balloon ? "-balloon" : ""}-n${N}-w${windowMs}-i${idleMean}-s${seed}`;
+writeFileSync(path.join(outDir, `${name}.json`), JSON.stringify({ ...result, samples }, null, 1));
 console.log(`${name.padEnd(30)} calls ${String(result.calls).padStart(4)}  p50 ${String(result.latencyMs.p50).padStart(4)}  p95 ${String(result.latencyMs.p95).padStart(5)}  p99 ${String(result.latencyMs.p99).padStart(5)}ms  ` +
   `VMs peak ${String(result.peak.microVMs).padStart(3)} (${result.peak.vmPssMiB} MiB)  disk ${result.peak.sessionsGiB} GiB  cpu ${result.mean.cpuBusy}%/${result.peak.cpuBusy}%  err ${result.errors}  ${result.slo.met ? "SLO met" : aborted ? `ABORTED ${aborted}` : "SLO missed"}`);
 rmSync(RUN, { recursive: true, force: true });

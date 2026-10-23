@@ -163,6 +163,19 @@ test("a snapshot is not reused across workspaces or across rebuilt images", () =
   assert.equal(snapshotPaths({ kernel, rootfs }, "/work/one"), undefined, "no snapshot dir, no snapshot");
 });
 
+test("a balloon returns freed guest memory, and a snapshot taken without one is not restored with one", () => {
+  const steps = buildConfig({ kernel: "/k", rootfs: "/r.ext4", balloon: true }, "/v.sock", "/work");
+  const at = (p: string) => steps.findIndex((x) => x.path === p);
+  assert.ok(at("/balloon") >= 0 && at("/balloon") < at("/actions"), "the device is configured before the machine starts");
+  assert.equal(buildConfig({ kernel: "/k", rootfs: "/r.ext4" }, "/v.sock", "/work").some((x) => x.path === "/balloon"), false);
+
+  const d = mkdtempSync(path.join(tmpdir(), "snapkey-"));
+  const kernel = path.join(d, "vmlinux"), rootfs = path.join(d, "rootfs.ext4");
+  writeFileSync(kernel, "k"); writeFileSync(rootfs, "image");
+  const key = (balloon: boolean) => snapshotPaths({ kernel, rootfs, snapshotDir: path.join(d, "snaps"), balloon }, "/work")!.state;
+  assert.notEqual(key(true), key(false), "the device is part of the machine the snapshot describes");
+});
+
 test("a file too large to copy fails by name instead of dying inside the sync", async () => {
   const { host, guest, client, done } = await rig(1024);
   try {

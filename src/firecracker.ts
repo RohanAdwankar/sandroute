@@ -65,6 +65,12 @@ export interface FirecrackerOptions {
    * the kernel command line and is baked into the guest's memory.
    */
   snapshotDir?: string;
+  /**
+   * Give memory the guest has freed back to the host as it frees it (virtio-balloon free page
+   * reporting), so a resident VM costs what it holds and not the most it has ever held. The
+   * device is part of the snapshot, so it is part of the snapshot's key.
+   */
+  balloon?: boolean;
 }
 
 /** The ordered Firecracker API calls that configure and start a VM. Pure, so it can be tested without KVM. */
@@ -88,6 +94,7 @@ export function buildConfig(o: FirecrackerOptions, vsockPath: string, workspace:
   if (net) {
     steps.push({ path: "/network-interfaces/eth0", body: { iface_id: "eth0", guest_mac: net.mac ?? "06:00:ac:10:00:02", host_dev_name: net.tap } });
   }
+  if (o.balloon) steps.push({ path: "/balloon", body: { amount_mib: 0, deflate_on_oom: true, free_page_reporting: true } });
   steps.push({ path: "/actions", body: { action_type: "InstanceStart" } });
   return steps;
 }
@@ -165,6 +172,7 @@ export function snapshotPaths(o: FirecrackerOptions, workspace: string): { state
   // the machine is part of the snapshot: restoring one taken at a different size or core
   // count gives a guest whose memory map does not match the VM around it
   h.update(`machine:${o.vcpus ?? 2}:${o.memMiB ?? 1024}`);
+  if (o.balloon) h.update("balloon");
   if (o.network) h.update(`net:${o.network.guestIp}:${o.network.gateway}`);
   const key = h.digest("hex").slice(0, 16);
   mkdirSync(o.snapshotDir, { recursive: true });
