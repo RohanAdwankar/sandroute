@@ -99,7 +99,7 @@ export function buildConfig(o: FirecrackerOptions, vsockPath: string, workspace:
   return steps;
 }
 
-function get(sock: string, p: string): Promise<void> {
+export function get(sock: string, p: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath: sock, path: p, method: "GET" }, (res) => {
       res.resume();
@@ -110,13 +110,13 @@ function get(sock: string, p: string): Promise<void> {
   });
 }
 
-function api(sock: string, p: string, body: unknown, method = "PUT"): Promise<void> {
+export function api(sock: string, p: string, body?: unknown, method = "PUT"): Promise<void> {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
+    const data = body === undefined ? "" : JSON.stringify(body);
     const req = http.request({ socketPath: sock, path: p, method, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data) } }, (res) => {
       let out = "";
       res.on("data", (d) => (out += d));
-      res.on("end", () => (res.statusCode! < 300 ? resolve() : reject(new Error(`firecracker ${method} ${p}: ${res.statusCode} ${out}`))));
+      res.on("end", () => (res.statusCode! < 300 ? resolve() : reject(new Error(`vmm ${method} ${p}: ${res.statusCode} ${out}`))));
     });
     req.on("error", reject);
     req.end(data);
@@ -144,9 +144,9 @@ export function vsockConnect(udsPath: string, port: number): Promise<net.Socket>
   });
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const VSOCK_REL = "v.sock";
+export const VSOCK_REL = "v.sock";
 
 /** Hash of the guest agent this build ships, so an image built from an older one is
  *  refused at connect rather than failing later in ways that look like anything else. */
@@ -191,24 +191,24 @@ async function waitApi(sock: string, readOnly = false) {
 }
 
 export class FirecrackerVm implements VmBackend {
-  readonly name = "firecracker";
-  private proc?: ChildProcess;
-  private client?: AgentClient;
-  private workspace = "";
-  private guest = "";
-  private dir = "";
-  private apiSock = "";
+  readonly name: string = "firecracker";
+  protected proc?: ChildProcess;
+  protected client?: AgentClient;
+  protected workspace = "";
+  protected guest = "";
+  protected dir = "";
+  protected apiSock = "";
   /** Snapshot of this session, written when it is suspended. Holds whatever the guest
    *  has accumulated -- installed packages, caches -- which the workspace does not cover. */
-  private sessionSnap?: { state: string; mem: string };
-  private sessionBase?: string;
-  private sessionGen = 0;
+  protected sessionSnap?: { state: string; mem: string };
+  protected sessionBase?: string;
+  protected sessionGen = 0;
   /** Releases that threw the machine away because it held nothing worth keeping. */
   discards = 0;
   /** True when the last boot() restored a snapshot rather than cold booting. */
   lastBootWasRestore = false;
 
-  constructor(private o: FirecrackerOptions) {}
+  constructor(protected o: FirecrackerOptions) {}
 
   async boot(workspace: string): Promise<void> {
     this.workspace = workspace;
@@ -235,49 +235,52 @@ export class FirecrackerVm implements VmBackend {
     await this.openClient();
   }
 
-  private snapPaths(workspace: string) {
+  protected snapPaths(workspace: string) {
     return snapshotPaths(this.o, workspace);
+  }
+
+  /** The two paths a session snapshot named `base` is written to. */
+  protected snapFiles(base: string): { state: string; mem: string } {
+    return { state: `${base}.state`, mem: `${base}.mem` };
+  }
+
+  /** Pause the machine and write it out. The VMM-specific half of a snapshot. */
+  protected async pauseAndSnapshot(snap: { state: string; mem: string }, sync = true): Promise<void> {
+    await api(this.apiSock, "/vm", { state: "Paused" }, "PATCH");
+    await api(this.apiSock, "/snapshot/create", { snapshot_type: "Full", snapshot_path: snap.state, mem_file_path: snap.mem, ...(sync ? {} : { sync_snapshot_files: false }) });
+  }
+
+  protected async resume(): Promise<void> {
+    await api(this.apiSock, "/vm", { state: "Resumed" }, "PATCH");
+  }
+
+  protected vmmCommand(apiSock: string): string[] {
+    return [this.o.bin ?? "firecracker", "--api-sock", apiSock];
   }
 
   /** firecracker binds the vsock socket relative to its cwd, so a relative uds_path in the
    * snapshot lets many restored VMs coexist instead of fighting over one absolute path. */
-  private spawnFc(): string {
+  protected spawnFc(): string {
     this.dir = mkdtempSync(path.join(tmpdir(), "sandroute-fc-"));
     const apiSock = (this.apiSock = path.join(this.dir, "api.sock"));
     // setpriv execs into firecracker, so this is still its pid. The kernel then kills it when
     // this process dies, however it dies: a crashed control plane must not leak microVMs.
-    this.proc = spawn("setpriv", ["--pdeathsig", "kill", this.o.bin ?? "firecracker", "--api-sock", apiSock], {
+    this.proc = spawn("setpriv", ["--pdeathsig", "kill", ...this.vmmCommand(apiSock)], {
       cwd: this.dir,
       stdio: this.o.console ? ["ignore", "inherit", "inherit"] : "ignore",
     });
     return apiSock;
   }
 
-  private async coldBoot(workspace: string): Promise<string> {
-    const apiSock = this.spawnFc();
-    await waitApi(apiSock);
+  protected waitVmm(sock: string, readOnly: boolean): Promise<void> {
+    return waitApi(sock, readOnly);
+  }
+
+  protected async configureAndStart(apiSock: string, workspace: string): Promise<void> {
     for (const step of buildConfig(this.o, VSOCK_REL, workspace)) await api(apiSock, step.path, step.body);
-    await this.probeAgent();
-    return apiSock;
   }
 
-  private async prime(apiSock: string, snap: { state: string; mem: string }) {
-    // Snapshot the guest while its workspace is still empty, so a restore is always a
-    // clean machine. The host owns the workspace and re-pushes it on wake anyway.
-    // There must be no live vsock connection: it does not survive the snapshot, and the
-    // guest would come back holding a dead one. probeAgent() already closed its socket,
-    // this just gives the agent a moment to get back to accept().
-    await sleep(50);
-    await api(apiSock, "/vm", { state: "Paused" }, "PATCH");
-    await api(apiSock, "/snapshot/create", { snapshot_type: "Full", snapshot_path: snap.state, mem_file_path: snap.mem });
-    await api(apiSock, "/vm", { state: "Resumed" }, "PATCH");
-  }
-
-  private async restore(snap: { state: string; mem: string }) {
-    const apiSock = this.spawnFc();
-    // GET, because firecracker refuses /snapshot/load once anything boot-specific is set
-    await waitApi(apiSock, true);
-    rmSync(path.join(this.dir, VSOCK_REL), { force: true });
+  protected async load(apiSock: string, snap: { state: string; mem: string }): Promise<void> {
     await api(apiSock, "/snapshot/load", {
       snapshot_path: snap.state,
       mem_backend: { backend_type: "File", backend_path: snap.mem },
@@ -285,10 +288,37 @@ export class FirecrackerVm implements VmBackend {
     });
   }
 
-  private get vsockPath() { return path.join(this.dir, VSOCK_REL); }
+  protected async coldBoot(workspace: string): Promise<string> {
+    const apiSock = this.spawnFc();
+    await this.waitVmm(apiSock, false);
+    await this.configureAndStart(apiSock, workspace);
+    await this.probeAgent();
+    return apiSock;
+  }
+
+  protected async prime(apiSock: string, snap: { state: string; mem: string }) {
+    // Snapshot the guest while its workspace is still empty, so a restore is always a
+    // clean machine. The host owns the workspace and re-pushes it on wake anyway.
+    // There must be no live vsock connection: it does not survive the snapshot, and the
+    // guest would come back holding a dead one. probeAgent() already closed its socket,
+    // this just gives the agent a moment to get back to accept().
+    await sleep(50);
+    await this.pauseAndSnapshot(snap);
+    await this.resume();
+  }
+
+  protected async restore(snap: { state: string; mem: string }) {
+    const apiSock = this.spawnFc();
+    // GET, because firecracker refuses /snapshot/load once anything boot-specific is set
+    await this.waitVmm(apiSock, true);
+    rmSync(path.join(this.dir, VSOCK_REL), { force: true });
+    await this.load(apiSock, snap);
+  }
+
+  protected get vsockPath() { return path.join(this.dir, VSOCK_REL); }
 
   /** Wait for the agent to answer, then hang up. Readiness only, no lasting connection. */
-  private async probeAgent() {
+  protected async probeAgent() {
     let lastErr: unknown;
     for (let i = 0; i < 300; i++) {
       try {
@@ -300,7 +330,7 @@ export class FirecrackerVm implements VmBackend {
     throw new Error("guest agent never came up: " + String(lastErr));
   }
 
-  private async openClient() {
+  protected async openClient() {
     this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
     this.client.onConflict = (p) => this.onConflict?.(p);
     this.client.expectAgent = AGENT_VERSION;
@@ -342,31 +372,28 @@ export class FirecrackerVm implements VmBackend {
     // next snapshot over the same file rewrites memory the guest may still read from it.
     this.sessionBase ??= path.join(dir, `session-${randomUUID()}`);
     this.sessionGen ^= 1;
-    const base = { state: `${this.sessionBase}.${this.sessionGen}.state`, mem: `${this.sessionBase}.${this.sessionGen}.mem` };
+    const base = this.snapFiles(`${this.sessionBase}.${this.sessionGen}`);
     const previous = this.sessionSnap;
     // Hang up first. A vsock connection does not survive a snapshot, and a guest
     // restored while holding one comes back with a dead socket and never accepts again.
     this.client?.close();
     this.client = undefined;
     await sleep(50);
-    await api(this.apiSock, "/vm", { state: "Paused" }, "PATCH");
-    await api(this.apiSock, "/snapshot/create", {
-      snapshot_type: "Full", snapshot_path: base.state, mem_file_path: base.mem, sync_snapshot_files: false,
-    });
+    await this.pauseAndSnapshot(base, false);
     this.sessionSnap = base;
     await this.halt();
-    for (const f of [previous?.state, previous?.mem]) if (f) rmSync(f, { force: true });
+    for (const f of [previous?.state, previous?.mem]) if (f) rmSync(f, { recursive: true, force: true });
   }
 
   async stop(): Promise<void> {
     await this.halt();
-    for (const f of [this.sessionSnap?.state, this.sessionSnap?.mem]) if (f) rmSync(f, { force: true });
+    for (const f of [this.sessionSnap?.state, this.sessionSnap?.mem]) if (f) rmSync(f, { recursive: true, force: true });
     this.sessionSnap = undefined;
   }
 
   /** Kill firecracker and wait for it to go: a tap is exclusive, so starting the next VM
    *  before this process has released its fd fails with "Resource busy". */
-  private async halt(): Promise<void> {
+  protected async halt(): Promise<void> {
     this.client?.close();
     this.client = undefined;
     const proc = this.proc;

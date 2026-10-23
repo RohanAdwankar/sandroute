@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentClient } from "../src/agent-client.ts";
 import { buildConfig, snapshotPaths } from "../src/firecracker.ts";
+import { buildChConfig } from "../src/cloud-hypervisor.ts";
 import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
@@ -174,6 +175,17 @@ test("a balloon returns freed guest memory, and a snapshot taken without one is 
   writeFileSync(kernel, "k"); writeFileSync(rootfs, "image");
   const key = (balloon: boolean) => snapshotPaths({ kernel, rootfs, snapshotDir: path.join(d, "snaps"), balloon }, "/work")!.state;
   assert.notEqual(key(true), key(false), "the device is part of the machine the snapshot describes");
+});
+
+test("the Cloud Hypervisor config keeps a UART, a relative vsock path, and a balloon only when asked for", () => {
+  const base = { kernel: "/k", rootfs: "/r.ext4" };
+  const c = buildChConfig({ ...base, balloon: true, memMiB: 256, vcpus: 1 }, "/work") as any;
+  assert.equal(c.serial.mode, "Null", "with no UART the guest blocks writing its console and the agent never comes up");
+  assert.equal(c.vsock.socket, "v.sock", "relative, so many VMs restored from one snapshot do not share a socket");
+  assert.equal(c.memory.size, 256 * 2 ** 20);
+  assert.deepEqual(c.balloon, { size: 0, deflate_on_oom: true, free_page_reporting: true });
+  assert.equal((buildChConfig(base, "/work") as any).balloon, undefined);
+  assert.throws(() => buildChConfig({ ...base, network: { tap: "t", guestIp: "1.1.1.2/30", gateway: "1.1.1.1" } }, "/work"), /no network support/);
 });
 
 test("a file too large to copy fails by name instead of dying inside the sync", async () => {
