@@ -7,8 +7,8 @@
 set -eu
 K=${KATA_HOME:-$HOME/kata}; G=${GVISOR_HOME:-$HOME/gvisor}; F=$K/final
 mkdir -p "$F/run" "$F/cni.d"
-# Kata's own defaults, pointed at the unpacked release, with a 256 MiB guest like the Firecracker VMs
-sed "s#/opt/kata#$K/root/opt/kata#g; s/^default_memory = .*/default_memory = 256/" "$K/root/opt/kata/share/defaults/kata-containers/configuration-clh.toml" > "$F/kata-clh.toml"
+# Kata's own defaults, pointed at the unpacked release, with a 256 MiB guest like the Firecracker VMs and free page reporting on, as Muse has
+sed "s#/opt/kata#$K/root/opt/kata#g; s/^default_memory = .*/default_memory = 256/; s/^reclaim_guest_freed_memory = false/reclaim_guest_freed_memory = true/" "$K/root/opt/kata/share/defaults/kata-containers/configuration-clh.toml" > "$F/kata-clh.toml"
 printf 'binary_name = "%s/runsc"\n[runsc_config]\n  platform = "systrap"\n' "$G" > "$F/runsc.toml"
 echo '{"cniVersion":"1.0.0","name":"kata-bridge","plugins":[{"type":"bridge","bridge":"kata0","isGateway":true,"ipMasq":false,"ipam":{"type":"host-local","ranges":[[{"subnet":"10.89.0.0/16"}]]}}]}' > "$F/cni.d/10-bridge.conflist"
 cat > "$F/containerd.toml" <<EOT

@@ -136,8 +136,10 @@ and then missed 592 and 608 on later runs. Treat each limit as good to about fiv
 come from `bench/final/run.sh`, which runs every series on an otherwise idle machine with three seeds and
 records the machine, the versions and the configs next to the results.
 
-What this does not say. Kata here is untuned: no VM templating, no memory ballooning or free page
-reporting, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
+What this does not say. The Kata numbers above were taken with Kata's default of no free page reporting, so
+they are not Muse's setup: Muse runs Cloud Hypervisor with a balloon that returns freed pages. With it on, a pod
+that allocated and freed 150 MB drops from 259 MiB back to 161 MiB, and stays at 259 MiB with it off. The final run
+(`bench/final/setup-cri.sh`) turns it on. Kata is also untuned in other ways: no VM templating, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
 (`p50` 50 to 80 ms, against a few ms for the vsock agent). The calibration that sets each call's own time
 was taken under Firecracker and is shared, so that per call cost counts against Kata. And the isolation is
 not the same: Kata puts every command in a VM, while `oxroute` runs the fixed-utility tier in a namespace
@@ -206,7 +208,8 @@ Instinct: a Firecracker microVM from E2B with 2 vCPU, 1.9 GB of RAM and 29 GB of
 desktop, up in about 1.3 s, with a timeout and either a cold boot or a snapshot resume. The snapshot resume is
 the `suspend` design here.
 
-Muse: a Cloud Hypervisor microVM with 2 vCPU and 8 GB allocated, holding a systemd-nspawn container, Postgres and
+Muse: a Cloud Hypervisor microVM (the `kata` designs here also use Cloud Hypervisor, with the root filesystem over
+virtio-fs and no balloon in the committed runs, where Muse uses block disks and a balloon) with 2 vCPU and 8 GB allocated, holding a systemd-nspawn container, Postgres and
 local models, kept up per user. A balloon with free page reporting returns freed pages, so an idle one costs its
 working set of about 2 GB and not 8. It is the same technique as `--balloon` here. A new one takes about 40 s to
 become ready, so they are pre-booted.
