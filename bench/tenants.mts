@@ -15,19 +15,21 @@
 //             design a Kubernetes operator picks for hostile tenants.
 //   kata-cold the same, but a pod is deleted after the idle window and the next command boots a new
 //             one, because Kata has no snapshot to release it to.
+//   gvisor, gvisor-cold   the same two with gVisor (runsc) as the containerd runtime: a userspace
+//             kernel and no VM. Set CRI_CONFIG and CRI_RUNTIME to point at that containerd.
 //
 //   npx tsx bench/tenants.mts --design oxroute --tenants 64 --minutes 6
 import { execSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { FirecrackerVm } from "../src/firecracker.js";
-import { KataVm } from "./kata-vm.mts";
+import { CriVm } from "./cri-vm.mts";
 import { Sandbox } from "../src/sandbox.js";
 import { Sandroute } from "../src/sandroute.js";
 
 const arg = (f: string, d: string) => { const i = process.argv.indexOf(f); return i > 0 ? process.argv[i + 1] : d; };
-const design = arg("--design", "oxroute") as "kept" | "suspend" | "oxroute" | "kata" | "kata-cold";
-const isKata = design.startsWith("kata");
+const design = arg("--design", "oxroute") as "kept" | "suspend" | "oxroute" | "kata" | "kata-cold" | "gvisor" | "gvisor-cold";
+const isCri = design.startsWith("kata") || design.startsWith("gvisor");
 const N = Number(arg("--tenants", "16"));
 const minutes = Number(arg("--minutes", "6"));
 const idleMean = Number(arg("--idle-mean", "120"));        // seconds a person is away between tasks
@@ -66,7 +68,7 @@ const vmFor = (i: number) => new FirecrackerVm({
   snapshotDir: `${pristineDir}`, sessionDir: `${RUN}/sessions/${i}`, guestWorkspace: "/work",
 });
 function sandboxFor(i: number, ws: string): Sandroute {
-  if (isKata) return new Sandroute({ workspace: ws, workspacePath: "/work", vm: new KataVm(String(i), RUN), allInVm: true, idleMs: design === "kata-cold" ? windowMs : undefined });
+  if (isCri) return new Sandroute({ workspace: ws, workspacePath: "/work", vm: new CriVm(String(i), RUN), allInVm: true, idleMs: design.endsWith("-cold") ? windowMs : undefined });
   const common = { workspace: ws, workspacePath: "/work", vm: vmFor(i) };
   if (design === "oxroute") return new Sandroute({ ...common, idleMs: windowMs, light: new Sandbox({ workspace: ws, mountAt: "/work" }) });
   return new Sandroute({ ...common, allInVm: true, idleMs: design === "suspend" ? windowMs : undefined });
@@ -82,12 +84,16 @@ const ownChildren = (name: string) => readdirSync("/proc").filter((p) => /^\d+$/
     return stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")")) === name && Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]) === process.pid;
   } catch { return false; }
 })());
-// A Kata pod is a hypervisor, a virtiofs daemon and a shim, all owned by root, so only RSS is readable.
-const kataProcs = () => readdirSync("/proc").filter((p) => /^\d+$/.test(p) && ["cloud-hyperviso", "virtiofsd", "containerd-shim"].includes((() => { try { return readFileSync(`/proc/${p}/comm`, "utf8").trim(); } catch { return ""; } })()));
+// A Kata or gVisor pod is several root-owned processes, so only RSS is readable, and the
+// machine's available memory is the number to trust. Kata: a hypervisor, a virtiofs daemon and a
+// shim. gVisor: a sentry (its kernel), a gofer, and the shim.
+const comm = (p: string) => { try { return readFileSync(`/proc/${p}/comm`, "utf8").trim(); } catch { return ""; } };
+const cmdline = (p: string) => { try { return readFileSync(`/proc/${p}/cmdline`, "utf8").replaceAll("\0", " "); } catch { return ""; } };
+const podProcs = () => readdirSync("/proc").filter((p) => /^\d+$/.test(p) && (design.startsWith("gvisor") ? /runsc|gvisor/.test(comm(p) + cmdline(p)) : ["cloud-hyperviso", "virtiofsd", "containerd-shim"].includes(comm(p))));
 const rss = (pid: string) => { try { return Number(/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/status`, "utf8"))![1]) / 1024; } catch { return 0; } };
-const vmProcs = () => isKata ? kataProcs() : ownChildren("firecracker");
-const vmCount = (ps: string[]) => isKata ? ps.filter((p) => { try { return readFileSync(`/proc/${p}/comm`, "utf8").trim() === "cloud-hyperviso"; } catch { return false; } }).length : ps.length;
-const vmMem = (pid: string) => isKata ? rss(pid) : pss(pid);
+const vmProcs = () => isCri ? podProcs() : ownChildren("firecracker");
+const vmCount = (ps: string[]) => isCri ? ps.filter((p) => comm(p) === (design.startsWith("gvisor") ? "containerd-shim" : "cloud-hyperviso")).length : ps.length;
+const vmMem = (pid: string) => isCri ? rss(pid) : pss(pid);
 const pss = (pid: string) => { try { return Number(/Pss:\s+(\d+)/.exec(readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"))![1]) / 1024; } catch { return 0; } };
 // CPU a process has used so far, in clock ticks, so the sampler can say who is using the machine
 const ticks = (pid: string | number) => { try { const f = readFileSync(`/proc/${pid}/stat`, "utf8"); const r = f.slice(f.lastIndexOf(")") + 2).split(" "); return Number(r[11]) + Number(r[12]); } catch { return 0; } };
@@ -152,7 +158,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
 // ---- run ----------------------------------------------------------------------------------
 const baseMem = meminfo("MemAvailable");
 let startedAt = Date.now();
-if (!isKata && (!existsSync(`${pristineDir}`) || !readdirSync(pristineDir).some((f) => f.endsWith(".mem")))) {
+if (!isCri && (!existsSync(`${pristineDir}`) || !readdirSync(pristineDir).some((f) => f.endsWith(".mem")))) {
   const warm = vmFor(-1); await warm.boot(`${RUN}/tenants/warm`).catch(() => {}); await warm.stop();
 }
 const sbs: Sandroute[] = [];
@@ -160,7 +166,7 @@ for (let i = 0; i < N; i++) {
   const ws = `${RUN}/tenants/t${i}`; cpSync(fixture, ws, { recursive: true });
   sbs.push(sandboxFor(i, ws));
 }
-if (design === "kept" || design === "kata") for (let i = 0; i < N; i += 8) await Promise.all(sbs.slice(i, i + 8).map((s) => s.run("true")));   // every tenant's machine is up from the start
+if (design === "kept" || design === "kata" || design === "gvisor") for (let i = 0; i < N; i += 8) await Promise.all(sbs.slice(i, i + 8).map((s) => s.run("true")));   // every tenant's machine is up from the start
 
 if (process.argv.includes("--calibrate")) {
   // one tenant, no think time, no one else: the cost of the calls themselves

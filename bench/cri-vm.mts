@@ -1,8 +1,8 @@
-// A Kata Containers pod per tenant, driven through the Kubernetes CRI like any cluster would:
-// crictl against a containerd that has Kata as its runtime. It is the VM-per-tenant design that
-// someone running Kubernetes picks to hold hostile tenants apart. Kata has no snapshot to
-// release a pod to, so the only way it gives memory back is to delete the pod, and the next
-// command boots a new one.
+// A pod per tenant, driven through the Kubernetes CRI like any cluster would: crictl against a
+// containerd that has a sandboxing runtime. With Kata the pod is a VM; with gVisor it is a
+// userspace kernel. These are what someone running Kubernetes picks to hold hostile tenants
+// apart. Neither has a snapshot to release a pod to, so the only way one gives memory back is
+// to delete the pod, and the next command boots a new one.
 import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -11,12 +11,14 @@ import type { VmBackend, VmResult } from "../src/vm.js";
 const K = process.env.KATA_HOME ?? "/home/rohan/kata";
 const image = process.env.KATA_IMAGE ?? "docker.io/library/python:3.13-slim";
 
+const crictlConfig = process.env.CRI_CONFIG ?? `${K}/crictl.yaml`;
+const runtime = process.env.CRI_RUNTIME;   // the containerd runtime handler; unset uses containerd's default
 const crictl = (args: string[], timeoutMs = 90_000) => new Promise<VmResult>((resolve) =>
-  execFile(`${K}/nerd/bin/crictl`, ["--config", `${K}/crictl.yaml`, ...args], { timeout: timeoutMs, maxBuffer: 20 * 2 ** 20 },
+  execFile(`${K}/nerd/bin/crictl`, ["--config", crictlConfig, ...args], { timeout: timeoutMs, maxBuffer: 20 * 2 ** 20 },
     (err, stdout, stderr) => resolve({ stdout, stderr, exitCode: err ? (typeof err.code === "number" ? err.code : 1) : 0 })));
 
-export class KataVm implements VmBackend {
-  readonly name = "kata (cloud-hypervisor, CRI)";
+export class CriVm implements VmBackend {
+  readonly name = `cri (${runtime ?? "default"})`;
   private pod?: string;
   private ctr?: string;
   private dir: string;
@@ -30,7 +32,7 @@ export class KataVm implements VmBackend {
     writeFileSync(pod, JSON.stringify({ metadata: { name: `t${this.id}-${gen}`, namespace: "b", uid: `${this.id}-${gen}-${process.pid}`, attempt: 1 }, log_directory: this.dir, linux: {} }));
     writeFileSync(ctr, JSON.stringify({ metadata: { name: "c" }, image: { image }, command: ["sleep", "infinity"], log_path: `c${gen}.log`,
       mounts: [{ host_path: workspace, container_path: "/work" }], linux: {} }));
-    const p = await crictl(["runp", pod]);
+    const p = await crictl(["runp", ...(runtime ? ["--runtime", runtime] : []), pod]);
     if (p.exitCode) throw new Error(`runp: ${p.stderr.trim().split("\n").pop()}`);
     this.pod = p.stdout.trim();
     const c = await crictl(["create", this.pod, ctr, pod]);
