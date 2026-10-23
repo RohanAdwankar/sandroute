@@ -139,7 +139,10 @@ records the machine, the versions and the configs next to the results.
 What this does not say. The Kata numbers above were taken with Kata's default of no free page reporting, so
 they are not Muse's setup: Muse runs Cloud Hypervisor with a balloon that returns freed pages. With it on, a pod
 that allocated and freed 150 MB drops from 259 MiB back to 161 MiB, and stays at 259 MiB with it off. The final run
-(`bench/final/setup-cri.sh`) turns it on. Kata is also untuned in other ways: no VM templating, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
+(`bench/final/setup-cri.sh`) turns it on. Two other settings were tried on the idle cost of eight pods, which is about 154 MiB each: a 128 MiB guest
+was worse (186 MiB), and virtio-fs with no cache would not boot a pod. Most of that cost is the guest kernel and
+agent, which Kata boots fresh for every pod; Firecracker restores from a shared snapshot instead, and Kata does not
+use Cloud Hypervisor's snapshots. Kata is also untuned in other ways: no VM templating, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
 (`p50` 50 to 80 ms, against a few ms for the vsock agent). The calibration that sets each call's own time
 was taken under Firecracker and is shared, so that per call cost counts against Kata. And the isolation is
 not the same: Kata puts every command in a VM, while `oxroute` runs the fixed-utility tier in a namespace
