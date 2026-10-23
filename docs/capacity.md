@@ -10,7 +10,7 @@ this says what that means, how it was measured, and what it does not show.
 
 ## What was compared
 
-Five ways of giving each tenant a sandbox, all driven through the same `Sandroute` class so the
+Seven ways of giving each tenant a sandbox, all driven through the same `Sandroute` class so the
 comparison is between designs and not between implementations.
 
 **kept** is a Firecracker microVM per tenant, started up front and never released. It is the simple
@@ -31,6 +31,11 @@ plain pod shares the host kernel. Each pod's guest has 1 vCPU and 256 MiB, like 
 
 **kata-cold** is the same, but a pod is deleted after the idle window and the next command boots a new
 one. Kata has no snapshot to release a pod to, so deleting it is the only way it gives memory back.
+
+**gvisor** is a gVisor (`runsc`, systrap platform) pod per tenant through the same CRI path as `kata`,
+kept up. gVisor puts a userspace kernel between the tenant and the host, so there is no VM and no guest
+kernel to pay memory for. It is the other standard way to hold hostile tenants apart, and it is how
+several hosted sandboxes are built. **gvisor-cold** deletes the pod after the idle window like `kata-cold`.
 
 Both released designs use the same release, which matters. A release that writes the VM's whole memory
 to disk is expensive, and it was the first thing to fail (see below). A guest that holds nothing worth
@@ -97,12 +102,27 @@ Kata on the same machine, the same recorded sessions and the same target:
 |---|---|---|---|
 | kata | 52 (one seed; 48 on another seed ran out of memory while starting) | 56, out of memory while starting | memory |
 | kata-cold, 30 second window | 48 (p99 1.25s) | 64, p99 1.85s | boot cost: every wake boots a VM |
+| gvisor | 192 (two seeds, p99 1.31s and 1.38s) | 208, out of memory while starting | cpu, then memory |
+| gvisor-cold, 30 second window | 96 (p99 0.76s) | 128, p99 2.7s | cpu: creating pods costs more than it saves |
 
 The best Kata result is about 50 tenants. `oxroute` passed 576, so roughly eleven times as many. A kept Kata
 pod costs about 150 MiB of host memory by the drop in available memory (the sum of process RSS overstates
 it), against 30 to 40 MiB for a Firecracker VM restored from a shared snapshot. `kata-cold` frees the
 memory of idle tenants but pays a VM boot, 0.75 seconds with the image cached, on the first command of every
 turn, which is why its p99 sits near the 1.5 second target from 48 tenants on.
+
+gVisor is a much closer competitor than Kata. A kept pod costs about 40 MiB of host memory, close to a
+Firecracker VM restored from a shared snapshot, and it boots in under 200 ms. It reached 192 tenants with
+the cpu at 100% and p99 near the target (the median call rose from 50 ms to 170 ms as the cpu saturated),
+so the limit is the cpu and not memory. It still sits below the snapshot design, `suspend`, at 416, and
+`oxroute` at 576. Deleting idle gVisor pods does not help: the cost of creating them under load brings the
+limit down to 96.
+
+Isolation is not the same across these. Kata and Firecracker put a hardware virtualisation boundary
+between tenants. gVisor reimplements the kernel in userspace and passes only a small set of system calls
+to the host, which is a smaller attack surface than a shared kernel but not a VM. `oxroute`'s file-only
+tier runs in a namespace sandbox with no system call filter, which is weaker than gVisor. Running that
+tier under gVisor instead is a design choice the numbers here do not cover.
 
 What this does not say. Kata here is untuned: no VM templating, no memory ballooning or free page
 reporting, and `crictl exec` starts a process per command, which adds tens of milliseconds to every call
@@ -192,5 +212,6 @@ snapshot, and the read tool failing on a directory.
     npx tsx bench/collect.mts                 # record sessions, needs opencode and its free tier
     npx tsx bench/tenants.mts --calibrate --design kept --tenants 1
     npx tsx bench/tenants.mts --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
-    npx tsx bench/tenants.mts --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/kata-vm.mts
+    npx tsx bench/tenants.mts --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/cri-vm.mts
+    CRI_CONFIG=... CRI_RUNTIME=runsc npx tsx bench/tenants.mts --design gvisor --tenants 192 --minutes 6 --idle-mean 120
     npx tsx bench/report.mts
