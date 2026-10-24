@@ -7,8 +7,10 @@
 set -u
 cd "$(dirname "$0")/../.."
 export PATH="$HOME/.cargo/bin:$PATH"
+[ "$(id -u)" = 0 ] && { echo "run it as yourself, not with sudo; it asks for sudo itself"; exit 1; }
 sudo true || exit 1
 sudo pkill -f 'containerd --confi[g]'                      # the old containerds, started before kata-vanilla was in the config
 sleep 3
 sudo rm -rf "$HOME"/tenant-run "$HOME"/tenant-run.stale-*  # root-owned files left by pods
+sudo find bench/results/final -maxdepth 1 -user root -exec rm -rf {} +
 SEEDS="1 2" bench/final/run.sh
