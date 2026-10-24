@@ -277,6 +277,15 @@ such file cannot be thrown away, so every later release of that tenant writes a 
 for the run. With 576 tenants picking sessions at random, about 11% hit that session at least once, which is about 65 tenants and about 16 GiB,
 the 15 to 18 GiB of snapshots seen at the limit. A scratch file is cheap to keep as a file. Keeping it as a memory snapshot is the expensive way.
 
+What changed. The guest's `/tmp` is now kept on the host the way the workspace is: the guest agent syncs it as a second area, the host holds
+the files while the guest is released, and a new task clears them. A guest that wrote only to `/tmp` holds no state, so it is thrown away on release and
+restored from the shared snapshot, which writes nothing. Memory snapshots are left for what only the guest has, such as installed packages.
+Replaying oxroute at 576 tenants, same seed, same machine, the same day: before, five runs had p99 of 2.8, 3.3, 4.0, 4.3 and 4.5 s and 15 to 18 GiB
+of snapshots on disk; after, p99 1.19 s, p95 374 ms against 700 to 1100, and no snapshots at all. The limit moved but did not vanish: 640 tenants
+missed twice (p99 1.6 and 2.9 s), 672 and 704 missed worse, all with the cpu at 98%. What is left at the limit is cpu, as the profile suggested once the
+disk wait was gone. The machine was slower this day than the earlier ones, when 576 passed under the old code, so the ratio of the two
+(about three times lower p99 at 576) is the figure to trust, and the final run on an idle machine will give the absolute limit.
+
 ### What the Claude Code box showed
 
 A probe inside a Claude Code box (kept out of the repo, since the log holds an access token) found a custom `6.18.44-fc-v153`

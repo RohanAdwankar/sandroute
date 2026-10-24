@@ -152,7 +152,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
   await until(rng() * idleMean * 1000);                       // tenants do not all start together
   while (!stopping && Date.now() < endAt) {
     const t = traces[Math.floor(rng() * traces.length)];
-    fresh(ws);
+    fresh(ws); s.vm.clearScratch?.();   // a new task is a new session: the host forgets the last one's /tmp as well
     const t0 = Date.now();
     activeTurns++;
     for (let k = 0; k < t.calls.length && !stopping; k++) {

@@ -75,7 +75,13 @@ so user to kernel and user to user matter, and the VMs are hostile to each other
 a blanket `mitigations=off` would cost no other tenant anything. Our guest kernel is 6.1.128, which predates the vector syntax, so it is all or nothing.
 Not tried here.
 
+## Tried since: keep /tmp as files on the host
+
+A guest that wrote to `/tmp` used to be kept as a 256 MiB memory snapshot, which cost most of the disk wait at oxroute's limit. Keeping scratch space as
+host files like the workspace made those guests discardable and cut p99 at 576 tenants by about three times (see `capacity.md`). It is the cheap
+version of what Claude Code does by keeping a disk and killing the VM.
+
 ## What this suggests trying next, in order
 
-Diff snapshots, because disk wait is where the released designs stop. Then `page_reporting_order=9`. Then THP and KSM (Claude Code's
+Now that disk wait is gone at 576, cpu is what is left, so diff snapshots matter less. Then `page_reporting_order=9`. Then THP and KSM (Claude Code's
 kernel has `CONFIG_KSM=y`, but whether it is used is not shown), which could let identical pages across guests share memory.
