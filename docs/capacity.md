@@ -286,6 +286,22 @@ missed twice (p99 1.6 and 2.9 s), 672 and 704 missed worse, all with the cpu at 
 disk wait was gone. The machine was slower this day than the earlier ones, when 576 passed under the old code, so the ratio of the two
 (about three times lower p99 at 576) is the figure to trust, and the final run on an idle machine will give the absolute limit.
 
+### Would a Rust port help?
+
+Not as a port of the control plane, as far as these runs go, but one piece of it matters a great deal. At 576 tenants the harness process used 161 of the
+910 cpu-seconds the machine spent, 50 of them in JavaScript. A V8 profile of it shows the main thread idle 63% of the time, with `spawn` at 17% and
+`readFileSync` at 10%, and the harness's own logic around 2%. There is little JavaScript to speed up.
+
+`spawn` is the finding. Node starts a process with fork(), which copies the page tables of the whole parent, so the price of every launch grows with how
+much Node holds: 0.5 ms of cpu at 64 MiB, 5.8 ms at 390 MiB and 12.7 ms at 860 MiB, against about 0.25 ms and no measurable cpu in a Rust process at any of those
+sizes, which uses posix_spawn. A control plane serving hundreds of tenants holds hundreds of MiB, and each light command pays that. `spawnd` is a small Rust
+helper (`spawnd/`, built with `npm run spawnd`) that starts the sandboxed commands for the host process and reports how they ended. A command costs 6.9 ms and
+about 0.3 ms of Node cpu whatever Node's size, where Node's own spawn took 18 ms at 320 MiB and 30 ms at 800 MiB.
+
+On the same workload, oxroute used 656 cpu-seconds for 17,450 calls before (37.6 ms a call) and 560 for 19,340 calls with it (29 ms a call), 23% less per
+call, with the harness's own system time down from 111 s to 64 s. At 640 tenants p99 went from 1.6 and 2.9 s to 0.9 and 2.3 s on two seeds, so the limit moved
+up a little but not past 704, which still missed (5.1 s). All 64 tests pass through the helper, including the escape probes and the replay of every recorded command.
+
 ### What the Claude Code box showed
 
 A probe inside a Claude Code box (kept out of the repo, since the log holds an access token) found a custom `6.18.44-fc-v153`

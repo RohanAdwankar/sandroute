@@ -222,6 +222,9 @@ clearInterval(sampler);
 const wall = (Date.now() - startedAt) / 1000;
 await Promise.all(sbs.map((s) => s.stop()));
 const leftover = vmCount(vmProcs());
+// CPU this process used, and what everything it started and waited for used (the VMs, the sandboxed commands)
+const self = process.cpuUsage(), stat = readFileSync("/proc/self/stat", "utf8"), fl = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+const cpuSeconds = { harnessUser: +(self.user / 1e6).toFixed(1), harnessSystem: +(self.system / 1e6).toFixed(1), childrenUser: +(Number(fl[13]) / 100).toFixed(1), childrenSystem: +(Number(fl[14]) / 100).toFixed(1) };
 
 // ---- report -------------------------------------------------------------------------------
 // Some calls are slow because the command is: an agent waiting on something runs a sleep, and
@@ -243,6 +246,7 @@ const result = {
   peak: { microVMs: max("fcCount"), vmPssMiB: max("fcPssMiB"), activeTurns: max("active"), sessionsGiB: max("sessionsGiB"), cpuBusy: max("cpuBusy"), iowait: max("iowait"), load1: max("load1") },
   mean: { microVMs: +mean("fcCount").toFixed(1), harnessPctOfACore: Math.round(mean("harnessCore")), microVMCores: +mean("microVMCores").toFixed(2), vmPssMiB: Math.round(mean("fcPssMiB")), cpuBusy: +mean("cpuBusy").toFixed(1) },
   memAvailableMiB: { start: Math.round(baseMem), min: Math.min(...samples.map((s) => s.memAvailMiB)) },
+  cpuSeconds,
   leakedMicroVMs: leftover,
   slo: { p99Ms: sloP99, met: !aborted && errs.every((e) => !/firecracker|guest agent|vsock|timed out/.test(e.err ?? "")) && pct(lat, 0.99) <= sloP99 },
 };
