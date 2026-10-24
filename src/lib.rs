@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod fileops;
 pub mod known_commands;
 pub mod router;
