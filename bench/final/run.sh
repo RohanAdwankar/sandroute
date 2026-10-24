@@ -64,14 +64,14 @@ series() {
 }
 
 # two tenant counts per series, one just under and one just over where the earlier rough runs stopped
-series oxroute       "--design oxroute"            30000 120 "560 608"
-series suspend       "--design suspend"             5000 120 "400 432"
+series oxroute       "--design oxroute"            30000 120 "640 768 896"
+series suspend       "--design suspend"             5000 120 "448 544"
 series kept          "--design kept"               30000 120 "112 144"
 series gvisor-cold   "--design gvisor-cold"        30000 120 "80 112" runsc
 series kata          "--design kata"               30000 120 "40 56"
 # the same VMMs set up the way the products in the earlier posts are described, to see what the setup is worth.
 # Claude Code's guest size is not known, so its series uses the default size; Muse is Cloud Hypervisor at 2 vCPU and 8 GiB.
-series fc-vanilla         "--design kept --no-snapshot"                      30000 120 "32 48"
+series fc-vanilla         "--design kept --no-snapshot"                      30000 120 "48 64"
 series fc-claude          "--design reclaim --no-snapshot"                   30000 120 "64 96"
 series ch-muse            "--design kept --vmm cloud-hypervisor --no-snapshot --vcpus 2 --mem 8192 --balloon" 30000 120 "16 32"
 series kata-vanilla       "--design kata"                                    30000 120 "32 48" kata-vanilla
