@@ -302,6 +302,20 @@ On the same workload, oxroute used 656 cpu-seconds for 17,450 calls before (37.6
 call, with the harness's own system time down from 111 s to 64 s. At 640 tenants p99 went from 1.6 and 2.9 s to 0.9 and 2.3 s on two seeds, so the limit moved
 up a little but not past 704, which still missed (5.1 s). All 64 tests pass through the helper, including the escape probes and the replay of every recorded command.
 
+### A harness that tells the sandbox what it knows
+
+An agent harness knows two things the sandbox only guesses at: that a turn has ended (the person is away, for minutes) and that one is about to start.
+`Sandroute.release()` already existed; `prewarm()` is new. Replaying oxroute at 640 tenants, two seeds each, with the harness sending one signal at a time:
+
+At the end of a turn it releases the VM at once, where the idle timer would wait 30 seconds. Mean resident VMs went from 150 to about 80, the lowest free memory
+from 0.9 to 1.5 GB up to 3.5 to 3.7 GB, and the number of wakes did not change (1519 to 1526 and 1520 to 1475), because the next command is minutes away either way. p99
+was 1.07 and 1.56 s against 0.91 and 2.27 s without it, which is within what these runs vary, and the cpu spent was the same. So the signal halves the memory the VMs hold
+and costs nothing, but it does not raise the limit here, since the limit is cpu. It matters wherever memory is the limit instead, which is a bigger guest or a host with less room.
+
+At the start of a turn it wakes the VM while the model is still thinking, so the first command does not wait. Without knowing which turns need a VM, this made things worse:
+wakes rose from 1520 to 2200, cpu spent rose by about 20%, and p99 was 1.9 and 3.1 s. About a third of the recorded sessions never touch a VM, so a blind wake is wasted
+work and the cpu is what is short. It would need a prediction of which turns will want one, such as the kind of task or the last turn's behaviour, and none was tried.
+
 ### What the Claude Code box showed
 
 A probe inside a Claude Code box (kept out of the repo, since the log holds an access token) found a custom `6.18.44-fc-v153`
