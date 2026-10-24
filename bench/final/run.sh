@@ -3,8 +3,7 @@
 # other sessions. Anything else using the cpu moves a design's limit, so the script waits for a
 # quiet machine, records what it was running on, and refuses to start otherwise.
 #
-#   SEEDS="1 2" ONLY="oxroute suspend kept gvisor-cold kata" bench/final/run.sh      the headline designs, about 2.5 hours
-#   SEEDS="1" ONLY="fc-vanilla fc-claude ch-muse kata-vanilla" bench/final/run.sh      the other setups, about 1 hour
+#   SEEDS="1 2" bench/final/run.sh                 every series, about 4 hours; ONLY="oxroute kata" picks some
 #
 # Each series steps up through its levels. A level is run once per seed, and the series stops at the
 # first level where most seeds fail the target (p99 added latency under 1500 ms, no errors, no
