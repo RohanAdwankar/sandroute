@@ -3,8 +3,8 @@
 # other sessions. Anything else using the cpu moves a design's limit, so the script waits for a
 # quiet machine, records what it was running on, and refuses to start otherwise.
 #
-#   bench/final/run.sh                       every series, 3 seeds, 6 minutes a run: about 20 hours with every series; ONLY picks some
-#   SEEDS="1 2" ONLY="oxroute gvisor" bench/final/run.sh
+#   SEEDS="1 2" ONLY="oxroute suspend kept gvisor-cold kata" bench/final/run.sh      the headline designs, about 2.5 hours
+#   SEEDS="1" ONLY="fc-vanilla fc-claude ch-muse kata-vanilla" bench/final/run.sh      the other setups, about 1 hour
 #
 # Each series steps up through its levels. A level is run once per seed, and the series stops at the
 # first level where most seeds fail the target (p99 added latency under 1500 ms, no errors, no
@@ -45,13 +45,11 @@ echo -e "series\tdesign\ttenants\tseed\tp99ms\tmet\taborted\tpeakcpu\tminavailMi
 # series NAME "design flags" WINDOW_MS IDLE_MEAN "levels" [cri runtime]
 series() {
   local name=$1 flags=$2 win=$3 idle=$4 levels=$5 rt=${6:-}
-  [ -n "${SMOKE:-}" ] && levels=${levels%% *}   # one level each, to check the script itself
   [ -n "$ONLY" ] && [[ " $ONLY " != *" $name "* ]] && return
   echo "=== $name  ($flags, window ${win}ms, idle-mean ${idle}s)"
   for n in $levels; do
     local pass=0 total=0
     for s in $SEEDS; do
-      [ "$n" = "${levels%% *}" ] && [ "$s" != "${SEEDS%% *}" ] && continue   # the lowest level is only a sanity run
       clean
       CRI_CONFIG=$CRICFG CRI_RUNTIME=$rt timeout 1500 target/release/tenants $flags --tenants "$n" --minutes "$MINUTES" --idle-mean "$idle" --window "$win" --seed "$s" --out "$OUT/raw" --name "$name-n$n-s$s" 2>&1 | tail -1 | cut -c1-200
       local f="$OUT/raw/$name-n$n-s$s.json"
@@ -66,30 +64,16 @@ series() {
   done
 }
 
-series kept          "--design kept"               30000 120 "112 128 144"
-series kept-balloon  "--design kept --balloon"     30000 120 "144 160 176"
-series suspend       "--design suspend"             5000 120 "384 416 432"
-series oxroute       "--design oxroute"            30000 120 "544 576 608"
-series gvisor        "--design gvisor"             30000 120 "176 192 208" runsc
-series gvisor-cold   "--design gvisor-cold"        30000 120 "96 112 128" runsc
-series kata          "--design kata"               30000 120 "40 48 56"
-series kata-cold     "--design kata-cold"          30000 120 "40 48 56"
+# two tenant counts per series, one just under and one just over where the earlier rough runs stopped
+series oxroute       "--design oxroute"            30000 120 "560 608"
+series suspend       "--design suspend"             5000 120 "400 432"
+series kept          "--design kept"               30000 120 "112 144"
+series gvisor-cold   "--design gvisor-cold"        30000 120 "80 112" runsc
+series kata          "--design kata"               30000 120 "40 56"
 # the same VMMs set up the way the products in the earlier posts are described, to see what the setup is worth.
-# Guest sizes: Instinct 2 vCPU 1.9 GB (E2B), Muse 2 vCPU 8 GB. Claude Code's are not known, so its series uses the default size.
-series fc-vanilla         "--design kept --no-snapshot"                      30000 120 "40 48 56"
-series fc-claude          "--design reclaim --no-snapshot"                   30000 120 "64 96 128"
-series fc-instinct        "--design suspend --vcpus 2 --mem 1900"             5000 120 "320 384 416"
-series fc-muse-sized      "--design kept --no-snapshot --vcpus 2 --mem 8192 --balloon" 30000 120 "32 40 48"
-series ch-vanilla         "--design kept --vmm cloud-hypervisor --no-snapshot" 30000 120 "32 40 48"
-series ch-muse            "--design kept --vmm cloud-hypervisor --no-snapshot --vcpus 2 --mem 8192 --balloon" 30000 120 "32 40 48"
-series ch-snapshot        "--design kept --vmm cloud-hypervisor --balloon"    30000 120 "128 160 192"
-series ch-suspend         "--design suspend --vmm cloud-hypervisor --balloon"  5000 120 "384 416 448"
-series ch-oxroute         "--design oxroute --vmm cloud-hypervisor --balloon" 30000 120 "544 576 608"
-series kata-vanilla       "--design kata"                                    30000 120 "32 40 48" kata-vanilla
-# a quieter population: a person away five minutes between tasks instead of two. The levels are
-# guesses above the busy ones; a series that fails at its first level says its limit is lower.
-series oxroute-quiet      "--design oxroute"       30000 300 "768 896 1024"
-series suspend-quiet      "--design suspend"        5000 300 "512 576 640"
-series gvisor-cold-quiet  "--design gvisor-cold"   30000 300 "160 192 224" runsc
-series kata-cold-quiet    "--design kata-cold"     30000 300 "64 80 96"
+# Claude Code's guest size is not known, so its series uses the default size; Muse is Cloud Hypervisor at 2 vCPU and 8 GiB.
+series fc-vanilla         "--design kept --no-snapshot"                      30000 120 "32 48"
+series fc-claude          "--design reclaim --no-snapshot"                   30000 120 "64 96"
+series ch-muse            "--design kept --vmm cloud-hypervisor --no-snapshot --vcpus 2 --mem 8192 --balloon" 30000 120 "16 32"
+series kata-vanilla       "--design kata"                                    30000 120 "32 48" kata-vanilla
 echo "done; see $OUT/summary.tsv"
