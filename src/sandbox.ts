@@ -20,9 +20,8 @@
 // It is container-grade isolation, which is weaker than a VM: the command shares the host
 // kernel, with a seccomp allowlist cutting what it can ask of it to about 300 system calls. That is why it is only for commands that run fixed, audited utilities over a
 // tenant's files; anything that runs code the tenant wrote goes to the microVM.
-import { spawn } from "node:child_process";
-import { closeSync, openSync } from "node:fs";
 import { filterFile } from "./seccomp.js";
+import { launch } from "./spawnd.js";
 
 export interface SandboxOptions {
   workspace: string;
@@ -62,31 +61,14 @@ export function bwrapArgs(workspace: string, mountAt: string, cwd: string, env: 
 export class Sandbox {
   constructor(private o: SandboxOptions) {}
 
-  exec(command: string, cwd?: string, env?: Record<string, string>): Promise<SandboxResult> {
+  async exec(command: string, cwd?: string, env?: Record<string, string>): Promise<SandboxResult> {
     const at = this.o.mountAt ?? this.o.workspace;
     const inner = ["bwrap", ...bwrapArgs(this.o.workspace, at, cwd ?? at, env), "/usr/bin/bash", "-c", command];
     // Joining the cgroup has to happen before bwrap starts so everything it forks inherits it.
-    const argv = this.o.cgroup
-      ? ["/usr/bin/sh", ["-c", 'echo $$ > "$1/cgroup.procs" && shift && exec "$@"', "sh", this.o.cgroup, ...inner]] as const
-      : [inner[0], inner.slice(1)] as const;
-    return new Promise((resolve) => {
-      const filter = openSync(filterFile(), "r");
-      const child = spawn(argv[0], argv[1] as string[], { stdio: ["ignore", "pipe", "pipe", filter] });
-      closeSync(filter);
-      const cap = this.o.maxOutputBytes ?? 10 * 2 ** 20;
-      let stdout = "", stderr = "", over = false;
-      const take = (into: "o" | "e") => (d: Buffer) => {
-        if (stdout.length + stderr.length > cap) { over = true; child.kill("SIGKILL"); return; }
-        if (into === "o") stdout += d; else stderr += d;
-      };
-      child.stdout.on("data", take("o"));
-      child.stderr.on("data", take("e"));
-      const timer = setTimeout(() => child.kill("SIGKILL"), this.o.timeoutMs ?? 60_000);
-      child.on("error", (e) => { clearTimeout(timer); resolve({ stdout, stderr: String(e), exitCode: 127 }); });
-      child.on("close", (code, sig) => {
-        clearTimeout(timer);
-        resolve({ stdout, stderr: over ? stderr + "\n[output limit exceeded]" : sig ? stderr + `\n[killed by ${sig}]` : stderr, exitCode: code ?? 137 });
-      });
-    });
+    const argv = this.o.cgroup ? ["/usr/bin/sh", "-c", 'echo $$ > "$1/cgroup.procs" && shift && exec "$@"', "sh", this.o.cgroup, ...inner] : inner;
+    const r = await launch(argv, { timeoutMs: this.o.timeoutMs ?? 60_000, maxOutput: this.o.maxOutputBytes ?? 10 * 2 ** 20, fd3: filterFile() });
+    if (r.error) return { stdout: r.stdout, stderr: r.error, exitCode: 127 };
+    const stderr = r.outputExceeded ? r.stderr + "\n[output limit exceeded]" : r.signal ? r.stderr + `\n[killed by ${r.signal}]` : r.stderr;
+    return { stdout: r.stdout, stderr, exitCode: r.code ?? 137 };
   }
 }

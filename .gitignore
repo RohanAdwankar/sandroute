@@ -2,3 +2,4 @@ node_modules
 *.log
 .work
 bench/traces/failed/
+spawnd/target

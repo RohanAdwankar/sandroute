@@ -15,6 +15,7 @@ cd "$(dirname "$0")/../.."
 SEEDS=${SEEDS:-"1 2 3"}; MINUTES=${MINUTES:-6}; ONLY=${ONLY:-}
 OUT=bench/results/final/$(date +%Y%m%d-%H%M%S); mkdir -p "$OUT/configs"
 exec > >(tee -a "$OUT/log.txt") 2>&1
+npm run --silent spawnd || exit 1   # the helper that starts the sandboxed commands
 CRICFG=$(bench/final/setup-cri.sh | tail -1)
 CT="$HOME/kata/nerd/bin/crictl --config $CRICFG"
 $CT info 2>/dev/null | grep -q kata-vanilla || { echo "the running containerd has an older config; stop it (sudo pkill -f 'final/containerd.toml') and run again"; exit 1; }

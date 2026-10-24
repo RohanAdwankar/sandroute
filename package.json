@@ -8,7 +8,8 @@
     "test": "tsx --test test/*.test.ts",
     "prewarm": "tsx bench/prewarm.mts",
     "bench:turn": "tsx bench/turn.mts",
-    "demo": "tsx bench/demo.mts"
+    "demo": "tsx bench/demo.mts",
+    "spawnd": "cargo build --release --manifest-path spawnd/Cargo.toml"
   },
   "license": "Apache-2.0",
   "dependencies": {
