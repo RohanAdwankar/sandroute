@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../.."
 SEEDS=${SEEDS:-"1 2 3"}; MINUTES=${MINUTES:-6}; ONLY=${ONLY:-}
 OUT=bench/results/final/$(date +%Y%m%d-%H%M%S); mkdir -p "$OUT/configs"
 exec > >(tee -a "$OUT/log.txt") 2>&1
-npm run --silent spawnd || exit 1   # the helper that starts the sandboxed commands
+cargo build --release --quiet --bins || exit 1
 CRICFG=$(bench/final/setup-cri.sh | tail -1)
 CT="$HOME/kata/nerd/bin/crictl --config $CRICFG"
 $CT info 2>/dev/null | grep -q kata-vanilla || { echo "the running containerd has an older config; stop it (sudo pkill -f 'final/containerd.toml') and run again"; exit 1; }
@@ -33,13 +33,13 @@ awk '{exit !($1 < 0.3)}' /proc/loadavg || { echo "load stayed above 0.3 for 15 m
 clean
 {
   date -Is; uname -a; grep -m1 'model name' /proc/cpuinfo; echo "cores: $(nproc)"; grep -E 'MemTotal|MemAvailable|SwapTotal' /proc/meminfo
-  echo "load: $(cat /proc/loadavg)"; echo "git: $(git rev-parse HEAD) $(git status --short | wc -l) uncommitted files"; echo "node: $(node --version)"
+  echo "load: $(cat /proc/loadavg)"; echo "git: $(git rev-parse HEAD) $(git status --short | wc -l) uncommitted files"; echo "rustc: $(rustc --version)"
   ~/fcassets/firecracker --version | head -1; ls "$HOME/kata/root/opt/kata/bin/" >/dev/null && "$HOME/kata/root/opt/kata/bin/kata-runtime" --version 2>&1 | head -1
   "$HOME/gvisor/runsc" --version 2>&1 | head -1; "$HOME/kata/nerd/bin/containerd" --version
   echo "--- processes using cpu at the start"; ps -eo pcpu,rss,args --sort=-pcpu | head -8
 } > "$OUT/environment.txt"
 cp "$HOME"/kata/final/*.toml "$HOME"/kata/final/crictl.yaml "$HOME"/kata/final/cni.d/* "$OUT/configs/"
-cp bench/tenants.mts bench/cri-vm.mts bench/final/run.sh "$OUT/configs/"
+cp src/bin/tenants.rs src/cri.rs bench/final/run.sh "$OUT/configs/"
 echo -e "series\tdesign\ttenants\tseed\tp99ms\tmet\taborted\tpeakcpu\tminavailMiB" > "$OUT/summary.tsv"
 
 # series NAME "design flags" WINDOW_MS IDLE_MEAN "levels" [cri runtime]
@@ -53,11 +53,11 @@ series() {
     for s in $SEEDS; do
       [ "$n" = "${levels%% *}" ] && [ "$s" != "${SEEDS%% *}" ] && continue   # the lowest level is only a sanity run
       clean
-      CRI_CONFIG=$CRICFG CRI_RUNTIME=$rt timeout 1500 npx tsx bench/tenants.mts $flags --tenants "$n" --minutes "$MINUTES" --idle-mean "$idle" --window "$win" --seed "$s" --out "$OUT/raw" --name "$name-n$n-s$s" 2>&1 | tail -1 | cut -c1-200
+      CRI_CONFIG=$CRICFG CRI_RUNTIME=$rt timeout 1500 target/release/tenants $flags --tenants "$n" --minutes "$MINUTES" --idle-mean "$idle" --window "$win" --seed "$s" --out "$OUT/raw" --name "$name-n$n-s$s" 2>&1 | tail -1 | cut -c1-200
       local f="$OUT/raw/$name-n$n-s$s.json"
       if [ -f "$f" ]; then
-        node -e 'const r=require(process.argv[1]);console.log([process.argv[2],r.design,r.tenants,r.seed,r.latencyMs.p99,r.slo.met,r.aborted??"",r.peak.cpuBusy,r.memAvailableMiB.min].join("\t"))' "$PWD/$f" "$name" >> "$OUT/summary.tsv"
-        [ "$(node -e 'console.log(require(process.argv[1]).slo.met?1:0)' "$PWD/$f")" = 1 ] && pass=$((pass+1))
+        jq -r --arg n "$name" '[$n,.design,.tenants,.seed,.latencyMs.p99,.slo.met,.aborted//"",.peak.cpuBusy,.memAvailableMiB.min]|@tsv' "$f" >> "$OUT/summary.tsv"
+        [ "$(jq '.slo.met' "$f")" = true ] && pass=$((pass+1))
       fi
       total=$((total+1))
     done

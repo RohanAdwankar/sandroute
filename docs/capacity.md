@@ -251,7 +251,7 @@ running code in a cheaper middle tier than a VM.
 
 ## Setting the same VMMs up the way the products do
 
-`bench/tenants.mts` takes `--vmm cloud-hypervisor` (a backend in `src/cloud-hypervisor.ts`, a subclass of the Firecracker one),
+`tenants` takes `--vmm cloud-hypervisor` (a mode of `src/vmm.rs`),
 `--vcpus`, `--mem`, `--balloon` and `--no-snapshot` (cold boot every VM), and the designs `reclaim` (kill an idle VM, cold boot the
 next) and the existing `kept` and `suspend`. That is enough to express the setups the earlier posts describe: Claude Code reclaims
 an idle VM and keeps its disk, Instinct (E2B) is 2 vCPU and 1.9 GB with snapshot resume, and Muse is Cloud Hypervisor at 2 vCPU and
@@ -294,9 +294,9 @@ Not as a port of the control plane, as far as these runs go, but one piece of it
 
 `spawn` is the finding. Node starts a process with fork(), which copies the page tables of the whole parent, so the price of every launch grows with how
 much Node holds: 0.5 ms of cpu at 64 MiB, 5.8 ms at 390 MiB and 12.7 ms at 860 MiB, against about 0.25 ms and no measurable cpu in a Rust process at any of those
-sizes, which uses posix_spawn. A control plane serving hundreds of tenants holds hundreds of MiB, and each light command pays that. `spawnd` is a small Rust
-helper (`spawnd/`, built with `npm run spawnd`) that starts the sandboxed commands for the host process and reports how they ended. A command costs 6.9 ms and
-about 0.3 ms of Node cpu whatever Node's size, where Node's own spawn took 18 ms at 320 MiB and 30 ms at 800 MiB.
+sizes, which uses posix_spawn. A control plane serving hundreds of tenants holds hundreds of MiB, and each light command pays that. The orchestrator is now Rust and
+starts the sandboxed commands with posix_spawn (`src/spawn.rs`), so the cost no longer depends on its size. When it was Node, a helper process did this: a command
+cost 6.9 ms and about 0.3 ms of Node cpu whatever Node's size, where Node's own spawn took 18 ms at 320 MiB and 30 ms at 800 MiB.
 
 On the same workload, oxroute used 656 cpu-seconds for 17,450 calls before (37.6 ms a call) and 560 for 19,340 calls with it (29 ms a call), 23% less per
 call, with the harness's own system time down from 111 s to 64 s. At 640 tenants p99 went from 1.6 and 2.9 s to 0.9 and 2.3 s on two seeds, so the limit moved
@@ -333,7 +333,7 @@ Cold booting suits a host with room to spare, as Claude Code's evidently is, and
 
 ## What one command costs in each tier
 
-The same command, run 60 times in each place, in a project of 300 small files (`bench/tiers.mts`; medians, with 95th percentiles for the slowest of the three):
+The same command, run 60 times in each place, in a project of 300 small files (`src/bin/tiers.rs`; medians, with 95th percentiles for the slowest of the three):
 
 | command | host, nothing around it | light sandbox | Firecracker, warm |
 |---|---|---|---|
@@ -415,9 +415,11 @@ snapshot, and the read tool failing on a directory.
 ## Reproducing it
 
     scripts/build-rootfs.sh
-    npx tsx bench/collect.mts                 # record sessions, needs opencode and its free tier
-    npx tsx bench/tenants.mts --calibrate --design kept --tenants 1
-    npx tsx bench/tenants.mts --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
-    npx tsx bench/tenants.mts --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/cri-vm.mts
-    CRI_CONFIG=... CRI_RUNTIME=runsc npx tsx bench/tenants.mts --design gvisor --tenants 192 --minutes 6 --idle-mean 120
-    npx tsx bench/report.mts
+    cargo build --release --bins
+    target/release/tenants --calibrate --design kept --tenants 1
+    target/release/tenants --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
+    target/release/tenants --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/final/setup-cri.sh
+    CRI_CONFIG=... CRI_RUNTIME=runsc target/release/tenants --design gvisor --tenants 192 --minutes 6 --idle-mean 120
+    target/release/report
+
+The recorded sessions in `bench/traces` were captured from opencode runs with a tool wrapper that has since been removed.

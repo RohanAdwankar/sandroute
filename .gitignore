@@ -1,6 +1,4 @@
 bench/traces/failed/
 *.log
-node_modules
-spawnd/target
 target
 .work
