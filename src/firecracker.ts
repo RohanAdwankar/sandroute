@@ -3,7 +3,7 @@ import http from "node:http";
 import net from "node:net";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentClient } from "./agent-client.js";
@@ -203,6 +203,7 @@ export class FirecrackerVm implements VmBackend {
   protected sessionSnap?: { state: string; mem: string };
   protected sessionBase?: string;
   protected sessionGen = 0;
+  private scratchRoot?: string;
   /** Releases that threw the machine away because it held nothing worth keeping. */
   discards = 0;
   /** True when the last boot() restored a snapshot rather than cold booting. */
@@ -315,6 +316,16 @@ export class FirecrackerVm implements VmBackend {
     await this.load(apiSock, snap);
   }
 
+  /** Where the host keeps the guest's /tmp, so releasing the guest does not lose it. */
+  private get scratchDir() {
+    this.scratchRoot ??= path.join(this.o.sessionDir ?? mkdtempSync(path.join(tmpdir(), "sandroute-scratch-")), "scratch");
+    return this.scratchRoot;
+  }
+
+  clearScratch() {
+    if (this.scratchRoot) for (const e of readdirSync(this.scratchRoot)) rmSync(path.join(this.scratchRoot, e), { recursive: true, force: true });
+  }
+
   protected get vsockPath() { return path.join(this.dir, VSOCK_REL); }
 
   /** Wait for the agent to answer, then hang up. Readiness only, no lasting connection. */
@@ -331,7 +342,7 @@ export class FirecrackerVm implements VmBackend {
   }
 
   protected async openClient() {
-    this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes);
+    this.client = new AgentClient(() => vsockConnect(this.vsockPath, this.o.agentPort ?? 5000), this.workspace, this.o.maxFileBytes, this.scratchDir);
     this.client.onConflict = (p) => this.onConflict?.(p);
     this.client.expectAgent = AGENT_VERSION;
     this.client.syncClock = true;
@@ -389,6 +400,8 @@ export class FirecrackerVm implements VmBackend {
     await this.halt();
     for (const f of [this.sessionSnap?.state, this.sessionSnap?.mem]) if (f) rmSync(f, { recursive: true, force: true });
     this.sessionSnap = undefined;
+    if (this.scratchRoot) rmSync(this.o.sessionDir ? this.scratchRoot : path.dirname(this.scratchRoot), { recursive: true, force: true });
+    this.scratchRoot = undefined;
   }
 
   /** Kill firecracker and wait for it to go: a tap is exclusive, so starting the next VM

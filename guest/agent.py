@@ -19,11 +19,7 @@ VERSION = hashlib.sha256(open(os.path.abspath(__file__), "rb").read()).hexdigest
 
 EXCLUDE_DIRS = {"node_modules", ".git"}  # must match SKIP in agent-client.ts
 
-# What the host is known to hold. Diffing a command against this rather than against the
-# workspace as it stood when the command started is what makes writes by anything the
-# agent left running -- a cron, a dev server, a build watcher -- visible at all: those
-# land between commands, so a before/after pair taken around one command cannot see them.
-SYNCED = ({}, set())
+AREAS = {}   # the directories kept in step with the host: "" is the workspace, "scratch" the guest's /tmp when asked for
 
 
 def snapshot(root):
@@ -68,19 +64,19 @@ def _ppid(pid):
 
 
 UPPER = None      # where this guest's changes to its image land, when the host asked to watch it
-SCRATCH = "/tmp"  # throwaway space that a release loses as well
+SCRATCH = None   # the guest's /tmp: kept in step with the host like the workspace, so a release loses nothing in it
 BASELINE = {}     # what was already there when the agent started, which the pristine snapshot holds
 
 
 def _entries(root):
     """Everything in the guest that a release could lose, as path -> (size, mtime).
 
-    The workspace is the host's and is pushed back on every wake, and bytecode caches
-    regenerate, so neither counts. What is left is real: a package installed, a file written
-    outside the workspace, a file removed from the image."""
+    The workspace and scratch space are the host's and are pushed back on every wake, and
+    bytecode caches regenerate, so none of them counts. What is left is real: a package
+    installed, a file written outside the workspace, a file removed from the image."""
     out = {}
     ws = os.path.relpath(root, "/")
-    for base in (UPPER, SCRATCH):
+    for base in (UPPER,):
         if not base or not os.path.isdir(base):
             continue
         for dirpath, dirnames, filenames in os.walk(base):
@@ -151,21 +147,75 @@ def live_processes():
     return out
 
 
-def drift(root):
-    """Everything that differs from what the host holds, and reset the mark.
+class Area:
+    """A directory the host keeps in step with the guest, and what the host is known to hold of it.
 
-    This is the only report the host gets, so it has to cover changes made at any time,
-    not only during a command: a cron or a dev server writes between commands.
+    Diffing a command against what the host holds rather than against the directory as it stood
+    when the command started is what makes writes by anything the agent left running -- a cron, a
+    dev server, a build watcher -- visible at all: those land between commands, so a before/after
+    pair taken around one command cannot see them.
     """
-    global SYNCED
-    before, before_dirs = SYNCED
-    after, after_dirs = snapshot(root)
-    SYNCED = (after, after_dirs)
-    return {
-        "changed": [read_file(root, r) for r, v in after.items() if before.get(r) != v],
-        "deleted": [r for r in before if r not in after],
-        "dirs": sorted(after_dirs - before_dirs),
-    }
+
+    def __init__(self, root, synced=None):
+        self.root = root
+        self.synced = synced if synced is not None else ({}, set())
+
+    def drift(self):
+        """Everything that differs from what the host holds, and reset the mark.
+
+        This is the only report the host gets, so it has to cover changes made at any time,
+        not only during a command.
+        """
+        before, before_dirs = self.synced
+        after, after_dirs = snapshot(self.root)
+        self.synced = (after, after_dirs)
+        return {
+            "changed": [read_file(self.root, r) for r, v in after.items() if before.get(r) != v],
+            "deleted": [r for r in before if r not in after],
+            "dirs": sorted(after_dirs - before_dirs),
+        }
+
+    def sync(self, req):
+        """Take what the host changed, and return the paths this side refused to overwrite."""
+        held, _ = self.synced
+        conflicts = []
+        for rel in req.get("delete", []):
+            try:
+                os.remove(safe(self.root, rel))
+            except FileNotFoundError:
+                pass
+        for rel in req.get("dirs", []):
+            os.makedirs(safe(self.root, rel), exist_ok=True)
+        for f in req.get("files", []):
+            rel = f["path"]
+            full = safe(self.root, rel)
+            # the guest moved this on too, so the host's copy is not an update but a
+            # competing version. The side with something running wins, and says so.
+            if os.path.isfile(full):
+                st = os.lstat(full)
+                if held.get(rel) != (st.st_mtime_ns, st.st_size):
+                    conflicts.append(rel)
+                    continue
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "wb") as out:
+                out.write(base64.b64decode(f["b64"]))
+            os.chmod(full, f.get("mode", 0o644))
+        held_now, dirs_now = snapshot(self.root)
+        # A file we refused still differs from what the host has, so it must stay marked
+        # as ours to report -- otherwise the refusal is silent and the two never converge.
+        for rel in conflicts:
+            held_now.pop(rel, None)
+        self.synced = (held_now, dirs_now)
+        return conflicts
+
+
+def drift():
+    """The report for every area, the workspace at the top level and the others under their names."""
+    out = AREAS[""].drift()
+    for name, area in AREAS.items():
+        if name:
+            out[name] = area.drift()
+    return out
 
 
 def handle(root, req):
@@ -184,45 +234,19 @@ def handle(root, req):
         procs = live_processes()
         # whatever is still running has been writing; hand that over while reporting it,
         # so a pinned VM does not drift further from the host the longer it runs
-        return dict(drift(root), busy=bool(procs), procs=procs)
-    global SYNCED
+        return dict(drift(), busy=bool(procs), procs=procs)
     if op == "sync":
-        held, _ = SYNCED
-        conflicts = []
-        for rel in req.get("delete", []):
-            try:
-                os.remove(safe(root, rel))
-            except FileNotFoundError:
-                pass
-        for rel in req.get("dirs", []):
-            os.makedirs(safe(root, rel), exist_ok=True)
-        for f in req.get("files", []):
-            rel = f["path"]
-            full = safe(root, rel)
-            # the guest moved this on too, so the host's copy is not an update but a
-            # competing version. The side with something running wins, and says so.
-            if os.path.isfile(full):
-                st = os.lstat(full)
-                if held.get(rel) != (st.st_mtime_ns, st.st_size):
-                    conflicts.append(rel)
-                    continue
-            os.makedirs(os.path.dirname(full), exist_ok=True)
-            with open(full, "wb") as out:
-                out.write(base64.b64decode(f["b64"]))
-            os.chmod(full, f.get("mode", 0o644))
-        held_now, dirs_now = snapshot(root)
-        # A file we refused still differs from what the host has, so it must stay marked
-        # as ours to report -- otherwise the refusal is silent and the two never converge.
-        for rel in conflicts:
-            held_now.pop(rel, None)
-        SYNCED = (held_now, dirs_now)
+        conflicts = AREAS[""].sync(req)
+        for name, area in AREAS.items():
+            if name:
+                conflicts += [name + ":" + c for c in area.sync(req.get(name, {}))]
         return {"ok": True, "conflicts": conflicts}
     if op == "exec":
         env = dict(os.environ)
         env.update(req.get("env") or {})
         cwd = req.get("cwd") or root
         p = subprocess.run(["bash", "-c", req["cmd"]], cwd=cwd, env=env, capture_output=True)
-        return dict(drift(root),
+        return dict(drift(),
                     stdout=p.stdout.decode("utf-8", "replace"),
                     stderr=p.stderr.decode("utf-8", "replace"),
                     code=p.returncode)
@@ -248,13 +272,17 @@ def main():
     ap.add_argument("--vsock-port", type=int)
     ap.add_argument("--unix")
     ap.add_argument("--upper", help="directory holding this guest's changes to its image")
-    ap.add_argument("--scratch", default="/tmp")
+    ap.add_argument("--scratch", help="the guest's scratch directory, kept in step with the host like the workspace")
     a = ap.parse_args()
     root = os.path.normpath(a.workspace)
     os.makedirs(root, exist_ok=True)
     global UPPER, SCRATCH, BASELINE
     UPPER, SCRATCH = a.upper, a.scratch
     BASELINE = _entries(root)
+    AREAS[""] = Area(root)
+    if SCRATCH:
+        # whatever is in it now was put there by the image, not by a tenant, and is not the host's to hold
+        AREAS["scratch"] = Area(SCRATCH, snapshot(SCRATCH))
     if a.vsock_port:
         s = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         s.bind((socket.VMADDR_CID_ANY, a.vsock_port))

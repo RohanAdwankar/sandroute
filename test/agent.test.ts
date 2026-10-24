@@ -12,13 +12,13 @@ import { manifest } from "../src/agent-client.ts";
 
 // The guest agent runs here as a plain process on a unix socket, with its own directory
 // standing in for the guest disk. This exercises the protocol and the file sync, not the VM.
-async function rig(maxFileBytes?: number, agentArgs: string[] = []) {
+async function rig(maxFileBytes?: number, agentArgs: string[] = [], scratchHost?: string) {
   const host = mkdtempSync(path.join(tmpdir(), "host-"));
   const guest = mkdtempSync(path.join(tmpdir(), "guest-"));
   const sock = path.join(mkdtempSync(path.join(tmpdir(), "sock-")), "a.sock");
   const agent: ChildProcess = spawn("python3", ["-I", "guest/agent.py", "--workspace", guest, "--unix", sock, ...agentArgs], { stdio: ["ignore", "pipe", "inherit"] });
   await new Promise<void>((r) => agent.stdout!.once("data", () => r()));
-  const client = new AgentClient(() => new Promise((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), host, maxFileBytes);
+  const client = new AgentClient(() => new Promise((res, rej) => { const s = net.connect(sock); s.once("connect", () => res(s)); s.once("error", rej); }), host, maxFileBytes, scratchHost);
   await client.open();
   return { host, guest, client, done: () => { client.close(); agent.kill(); } };
 }
@@ -188,6 +188,28 @@ test("the Cloud Hypervisor config keeps a UART, a relative vsock path, and a bal
   assert.throws(() => buildChConfig({ ...base, network: { tap: "t", guestIp: "1.1.1.2/30", gateway: "1.1.1.1" } }, "/work"), /no network support/);
 });
 
+test("the guest's scratch space is kept on the host, and comes back when the guest is replaced", async () => {
+  const gscratch = mkdtempSync(path.join(tmpdir(), "gscratch-")), hscratch = mkdtempSync(path.join(tmpdir(), "hscratch-"));
+  writeFileSync(path.join(gscratch, "from-the-image"), "put there by the image, not by a tenant");
+  const first = await rig(undefined, ["--scratch", gscratch], hscratch);
+  try {
+    await first.client.exec(`echo draft > ${gscratch}/note.txt; mkdir -p ${gscratch}/sub && echo deep > ${gscratch}/sub/x`, first.guest);
+    assert.equal(readFileSync(path.join(hscratch, "note.txt"), "utf8"), "draft\n", "a file the guest wrote in scratch reaches the host");
+    assert.equal(readFileSync(path.join(hscratch, "sub/x"), "utf8"), "deep\n");
+    assert.ok(!existsSync(path.join(hscratch, "from-the-image")), "what the image put there is not the host's to hold");
+  } finally { first.done(); }
+
+  // the guest is thrown away and a clean one starts; the host's copy is all that is left of its scratch space
+  const fresh = mkdtempSync(path.join(tmpdir(), "gscratch2-"));
+  const second = await rig(undefined, ["--scratch", fresh], hscratch);
+  try {
+    const r = await second.client.exec(`cat ${fresh}/note.txt ${fresh}/sub/x`, second.guest);
+    assert.equal(r.stdout, "draft\ndeep\n", "the new guest has what the old one wrote");
+    rmSync(path.join(hscratch, "note.txt"));
+    assert.equal((await second.client.exec(`ls ${fresh}`, second.guest)).stdout.includes("note.txt"), false, "and a delete on the host reaches it");
+  } finally { second.done(); }
+});
+
 test("a file too large to copy fails by name instead of dying inside the sync", async () => {
   const { host, guest, client, done } = await rig(1024);
   try {
@@ -324,7 +346,7 @@ test("a guest reports state only for what a release would lose and the host cann
 
     rmSync(path.join(upper, "usr/local"), { recursive: true });
     assert.equal((await client.state()).files, 0, "and it stops counting once it is gone");
-    writeFileSync(path.join(scratch, "note.txt"), "scratch space is lost on a release too");
-    assert.equal((await client.state()).files, 1);
+    writeFileSync(path.join(scratch, "note.txt"), "scratch space is kept on the host, so a release loses nothing in it");
+    assert.equal((await client.state()).files, 0, "scratch space is the host's too, so it is not state");
   } finally { done(); }
 });

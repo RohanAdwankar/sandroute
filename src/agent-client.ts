@@ -4,7 +4,8 @@ import path from "node:path";
 import readline from "node:readline";
 
 export interface FileMsg { path: string; mode: number; b64: string }
-export interface ExecResponse { stdout: string; stderr: string; code: number; changed: FileMsg[]; deleted: string[]; dirs?: string[] }
+export interface Report { changed: FileMsg[]; deleted: string[]; dirs?: string[] }
+export interface ExecResponse extends Report { stdout: string; stderr: string; code: number; scratch?: Report }
 
 type Manifest = {
   files: Map<string, string>; // path -> "mtimeNs:size"
@@ -49,18 +50,66 @@ export function manifest(root: string): Manifest {
   return m;
 }
 
+/** A host directory kept in step with a guest directory, and what the guest is known to hold of it. */
+class Area {
+  synced: Manifest = { files: new Map(), dirs: new Set(), takenNs: 0n };
+
+  /** Whole files go over the wire base64'd, in one JSON line, on every wake. Past a point
+   *  that is not a slow sync, it is a dead one: node cannot hold a string over ~512MB. */
+  constructor(readonly dir: string, private maxFileBytes: number) { mkdirSync(dir, { recursive: true }); }
+
+  /** What changed on the host since the last sync, in the shape the guest's sync takes. */
+  changes() {
+    const now = manifest(this.dir);
+    const files: FileMsg[] = [];
+    for (const [rel, sig] of now.files) {
+      // Same size inside the same tick as the last sync looks identical, so trust the
+      // signature only for files that were already settled when that sync was taken.
+      const settled = BigInt(sig.split(":")[0]) < this.synced.takenNs;
+      if (settled && this.synced.files.get(rel) === sig) continue;
+      const full = path.join(this.dir, rel);
+      const st = lstatSync(full, { throwIfNoEntry: false });
+      if (!st || !st.isFile()) continue; // vanished, or no longer a regular file
+      if (st.size > this.maxFileBytes)
+        throw new Error(`${rel} is ${(st.size / 2 ** 20).toFixed(0)}MiB, over the ${(this.maxFileBytes / 2 ** 20).toFixed(0)}MiB sync limit; it is copied into the guest on every wake`);
+      files.push({ path: rel, mode: st.mode & 0o777, b64: readFileSync(full).toString("base64") });
+    }
+    const del = [...this.synced.files.keys()].filter((r) => !now.files.has(r));
+    // directories carry no files, so nothing else would ever create them in the guest
+    const dirs = [...now.dirs].filter((d) => !this.synced.dirs.has(d));
+    this.synced = now;
+    return { files, delete: del, dirs };
+  }
+
+  /** Take whatever the guest reports and make the host match it. */
+  apply(r: Report) {
+    for (const rel of r.deleted) rmSync(path.join(this.dir, rel), { force: true });
+    for (const rel of r.dirs ?? []) mkdirSync(path.join(this.dir, rel), { recursive: true });
+    for (const f of r.changed) {
+      const full = path.join(this.dir, f.path);
+      mkdirSync(path.dirname(full), { recursive: true });
+      writeFileSync(full, Buffer.from(f.b64, "base64"));
+      chmodSync(full, f.mode);
+    }
+    // what we just wrote is now identical on both sides
+    this.synced = manifest(this.dir);
+  }
+}
+
 /** Talks to the guest agent and keeps the host workspace and the guest workspace in step. */
 export class AgentClient {
   private sock!: net.Socket;
   private rl!: readline.Interface;
   private pending: { resolve(line: string): void; reject(e: Error): void }[] = [];
   private dead?: Error;
-  /** What the guest is known to hold. */
-  private synced: Manifest = { files: new Map(), dirs: new Set(), takenNs: 0n };
+  private workspace: Area;
+  /** The guest's /tmp, kept on the host so a release that discards the guest loses nothing in it. */
+  private scratch?: Area;
 
-  /** Whole files go over the wire base64'd, in one JSON line, on every wake. Past a point
-   *  that is not a slow sync, it is a dead one: node cannot hold a string over ~512MB. */
-  constructor(private connect: () => Promise<net.Socket>, private workspace: string, private maxFileBytes = 64 * 1024 * 1024) {}
+  constructor(private connect: () => Promise<net.Socket>, workspace: string, maxFileBytes = 64 * 1024 * 1024, scratchDir?: string) {
+    this.workspace = new Area(workspace, maxFileBytes);
+    if (scratchDir) this.scratch = new Area(scratchDir, maxFileBytes);
+  }
 
   /** Called with paths the guest kept its own version of. */
   onConflict?: (paths: string[]) => void;
@@ -107,26 +156,10 @@ export class AgentClient {
 
   /** Push whatever changed on the host since the last sync. */
   async pushChanges() {
-    const now = manifest(this.workspace);
-    const files: FileMsg[] = [];
-    for (const [rel, sig] of now.files) {
-      // Same size inside the same tick as the last sync looks identical, so trust the
-      // signature only for files that were already settled when that sync was taken.
-      const settled = BigInt(sig.split(":")[0]) < this.synced.takenNs;
-      if (settled && this.synced.files.get(rel) === sig) continue;
-      const full = path.join(this.workspace, rel);
-      const st = lstatSync(full, { throwIfNoEntry: false });
-      if (!st || !st.isFile()) continue; // vanished, or no longer a regular file
-      if (st.size > this.maxFileBytes)
-        throw new Error(`${rel} is ${(st.size / 2 ** 20).toFixed(0)}MiB, over the ${(this.maxFileBytes / 2 ** 20).toFixed(0)}MiB sync limit; the workspace is copied into the guest on every wake`);
-      files.push({ path: rel, mode: st.mode & 0o777, b64: readFileSync(full).toString("base64") });
-    }
-    const del = [...this.synced.files.keys()].filter((r) => !now.files.has(r));
-    // directories carry no files, so nothing else would ever create them in the guest
-    const dirs = [...now.dirs].filter((d) => !this.synced.dirs.has(d));
-    this.synced = now;
-    if (!files.length && !del.length && !dirs.length) return;
-    const r = await this.request({ op: "sync", files, delete: del, dirs });
+    const ws = this.workspace.changes(), sc = this.scratch?.changes();
+    const empty = (c: { files: unknown[]; delete: unknown[]; dirs: unknown[] }) => !c.files.length && !c.delete.length && !c.dirs.length;
+    if (empty(ws) && (!sc || empty(sc))) return;
+    const r = await this.request({ op: "sync", ...ws, ...(sc ? { scratch: sc } : {}) });
     // The guest refuses a file it has moved on from itself. Its version arrives with the
     // next report, so the host converges on it rather than overwriting it.
     if (r.conflicts?.length) this.onConflict?.(r.conflicts);
@@ -139,18 +172,9 @@ export class AgentClient {
     return r;
   }
 
-  /** Take whatever the guest reports and make the host match it. */
-  private apply(r: { changed: FileMsg[]; deleted: string[]; dirs?: string[] }) {
-    for (const rel of r.deleted) rmSync(path.join(this.workspace, rel), { force: true });
-    for (const rel of r.dirs ?? []) mkdirSync(path.join(this.workspace, rel), { recursive: true });
-    for (const f of r.changed) {
-      const full = path.join(this.workspace, f.path);
-      mkdirSync(path.dirname(full), { recursive: true });
-      writeFileSync(full, Buffer.from(f.b64, "base64"));
-      chmodSync(full, f.mode);
-    }
-    // what we just wrote is now identical on both sides
-    this.synced = manifest(this.workspace);
+  private apply(r: ExecResponse | (Report & { scratch?: Report })) {
+    this.workspace.apply(r);
+    if (r.scratch) this.scratch?.apply(r.scratch);
   }
 
   /** What this guest holds that a release would lose and the host cannot rebuild. */

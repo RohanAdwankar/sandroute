@@ -134,7 +134,7 @@ if [ -n "$gip" ]; then
 fi
 
 while :; do
-  chroot "$R" /usr/bin/python3 /agent.py --workspace "$ws" --vsock-port "$port" --upper /.upper
+  chroot "$R" /usr/bin/python3 /agent.py --workspace "$ws" --vsock-port "$port" --upper /.upper --scratch /tmp
   echo "sandroute-init: agent exited $?, restarting"
   sleep 1
 done
