@@ -293,7 +293,9 @@ async fn tenant(ctx: Arc<Ctx>, i: usize, s: Sandroute, end_at: Instant, ws: Path
     until(ctx.rng.next() * ctx.cfg.idle_mean * 1000.0).await; // tenants do not all start together
     while !ctx.stopping.load(Ordering::Relaxed) && Instant::now() < end_at {
         let t = &ctx.traces[(ctx.rng.next() * ctx.traces.len() as f64) as usize];
-        let _ = fresh(&ws, &ctx.cfg.fixture);
+        if let Err(e) = fresh(&ws, &ctx.cfg.fixture) {
+            eprintln!("tenant {i}: resetting the workspace failed: {e}");
+        }
         s.vm().clear_scratch(); // a new task is a new session: the host forgets the last one's /tmp as well
         if ctx.cfg.hint_start {
             let s = s.clone();
@@ -361,7 +363,9 @@ async fn main() -> Result<()> {
     // something runs a sleep, and that wait is the same under every design. What a design adds is the time above this.
     let intrinsic: HashMap<String, u64> = std::fs::read_to_string(&intrinsic_file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
 
-    let _ = std::fs::remove_dir_all(&cfg.run);
+    if cfg.run.exists() {
+        std::fs::remove_dir_all(&cfg.run).map_err(|e| anyhow::anyhow!("cannot clear {} (leftovers owned by root from a pod run?): {e}", cfg.run.display()))?;
+    }
     std::fs::create_dir_all(cfg.run.join("tenants"))?;
     let base_mem = meminfo("MemAvailable:");
     // prime the shared snapshot once, so the tenants do not all do it at the same time
@@ -458,7 +462,7 @@ async fn main() -> Result<()> {
     for r in recs.iter() { *tiers.entry(r.tier.clone()).or_insert(json!(0)) = json!(tiers.get(&r.tier).and_then(Value::as_u64).unwrap_or(0) + 1); }
     let aborted = aborted.lock().unwrap().clone();
     let p99 = pct(&lat, 0.99);
-    let met = aborted.is_none() && errs.iter().all(|e| !["firecracker", "guest agent", "vsock", "timed out"].iter().any(|k| e.err.as_deref().unwrap_or("").contains(k))) && p99 <= c.slo_p99;
+    let met = aborted.is_none() && errs.is_empty() && p99 <= c.slo_p99;
     let wakes: u64 = sbs.iter().map(|s| s.boot_count()).sum();
     let suspends: u64 = sbs.iter().map(|s| s.release_count()).sum();
     let result = json!({
