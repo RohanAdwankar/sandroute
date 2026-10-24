@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod cri;
 pub mod fileops;
 pub mod known_commands;
 pub mod router;
@@ -7,5 +8,6 @@ pub mod sandroute;
 pub mod seccomp;
 pub mod seccomp_policy;
 pub mod spawn;
+pub mod traces;
 pub mod vm;
 pub mod vmm;

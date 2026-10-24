@@ -23,8 +23,12 @@ impl Drop for Rig {
     }
 }
 
+/// The guest agent is its own crate, so the tests build it once and run the binary.
 fn agent_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_guest_agent"))
+    static BUILT: std::sync::Once = std::sync::Once::new();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    BUILT.call_once(|| assert!(Command::new("cargo").args(["build", "-q", "-p", "guest-agent"]).current_dir(&root).status().unwrap().success()));
+    root.join("target/debug/guest-agent")
 }
 
 async fn rig_with(agent_args: &[String], opts: OpenOptions) -> Rig {

@@ -1,0 +1,17 @@
+[package]
+name = "guest-agent"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Runs inside the microVM and serves the host: file sync, commands, and whether the guest holds anything worth keeping."
+
+[dependencies]
+base64 = "0.22"
+libc = "0.2"
+serde_json = "1"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

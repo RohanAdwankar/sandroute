@@ -177,7 +177,7 @@ struct Conn {
 
 /// Hash of the guest agent this host ships, so an image built from an older one is refused at connect.
 pub fn expected_agent() -> String {
-    Sha256::digest(include_bytes!("bin/guest_agent.rs"))[..6].iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(include_bytes!("../guest-agent/src/main.rs"))[..6].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 type ConflictFn = Box<dyn Fn(Vec<String>) + Send + Sync>;

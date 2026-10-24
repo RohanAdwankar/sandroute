@@ -24,7 +24,7 @@ use std::process::Command;
 /// The host ships this file and the image carries a build of it. An image built from an older one answers a protocol the host no
 /// longer speaks, and the failures that follow look like anything but a stale build, so say which copy this is and let the host object.
 fn version() -> String {
-    let d = Sha256::digest(include_bytes!("guest_agent.rs"));
+    let d = Sha256::digest(include_bytes!("main.rs"));
     d[..6].iter().map(|b| format!("{b:02x}")).collect()
 }
 

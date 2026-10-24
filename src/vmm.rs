@@ -178,17 +178,31 @@ fn snap_files_of(vmm: Vmm, state: &Path, mem: &Path) -> (PathBuf, PathBuf) {
     }
 }
 
-/// One HTTP/1.1 request to a VMM's API over its unix socket.
+/// One HTTP/1.1 request to a VMM's API over its unix socket. The reply is read by its Content-Length: the VMM does not always close the
+/// connection when it has answered.
 async fn api(sock: &Path, method: &str, path: &str, body: Option<&Value>) -> Result<()> {
-    let mut s = UnixStream::connect(sock).await?;
+    let mut s = BufReader::new(UnixStream::connect(sock).await?);
     let data = body.map(|b| b.to_string()).unwrap_or_default();
-    s.write_all(format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}", data.len()).as_bytes()).await?;
-    let mut resp = Vec::new();
-    s.read_to_end(&mut resp).await?;
-    let text = String::from_utf8_lossy(&resp);
-    let status: u16 = text.split(' ').nth(1).and_then(|c| c.parse().ok()).ok_or_else(|| anyhow!("vmm {method} {path}: no reply"))?;
+    s.get_mut().write_all(format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}", data.len()).as_bytes()).await?;
+    let mut status_line = String::new();
+    s.read_line(&mut status_line).await?;
+    let status: u16 = status_line.split(' ').nth(1).and_then(|c| c.parse().ok()).ok_or_else(|| anyhow!("vmm {method} {path}: no reply"))?;
+    let mut len = 0usize;
+    loop {
+        let mut h = String::new();
+        if s.read_line(&mut h).await? == 0 || h == "\r\n" {
+            break;
+        }
+        if let Some((k, v)) = h.split_once(':') {
+            if k.eq_ignore_ascii_case("content-length") {
+                len = v.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    let mut reply = vec![0u8; len];
+    s.read_exact(&mut reply).await?;
     if status >= 300 {
-        bail!("vmm {method} {path}: {status} {}", text.split("\r\n\r\n").nth(1).unwrap_or(""));
+        bail!("vmm {method} {path}: {status} {}", String::from_utf8_lossy(&reply));
     }
     Ok(())
 }
