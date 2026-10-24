@@ -64,9 +64,9 @@ series() {
 }
 
 # two tenant counts per series, one just under and one just over where the earlier rough runs stopped
-series oxroute       "--design oxroute"            30000 120 "640 768 896"
-series suspend       "--design suspend"             5000 120 "448 544"
-series kept          "--design kept"               30000 120 "112 144"
+series oxroute       "--design oxroute"            30000 120 "672 704 736"
+series suspend       "--design suspend"             5000 120 "576 640 704"
+series kept          "--design kept"               30000 120 "160 176 192"
 series gvisor-cold   "--design gvisor-cold"        30000 120 "80 112" runsc
 series kata          "--design kata"               30000 120 "40 56"
 # the same VMMs set up the way the products in the earlier posts are described, to see what the setup is worth.
