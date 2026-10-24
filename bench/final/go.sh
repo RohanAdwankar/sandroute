@@ -6,6 +6,7 @@
 #   bench/final/go.sh
 set -u
 cd "$(dirname "$0")/../.."
+export PATH="$HOME/.cargo/bin:$PATH"
 sudo true || exit 1
 sudo pkill -f 'containerd --confi[g]'                      # the old containerds, started before kata-vanilla was in the config
 sleep 3
