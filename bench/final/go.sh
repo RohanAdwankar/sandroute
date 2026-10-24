@@ -1,6 +1,7 @@
 #!/bin/bash
 # Clears what earlier pod runs left behind, then runs the whole final benchmark: the headline designs at two seeds, then the other setups at one.
-# Close everything else first (editors, browsers, agent sessions). It asks for sudo once, for the cleanup. About 3.5 hours at worst.
+# It asks for sudo once, for the cleanup. Nothing else needs closing: idle programs cost the benchmark nothing, and run.sh waits for the
+# machine to go quiet (load under 0.3) before it starts and says what is busy if it never does. About 3.5 hours at worst.
 #
 #   bench/final/go.sh
 set -u
