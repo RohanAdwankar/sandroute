@@ -2,7 +2,8 @@
 
 What each platform does to fit more tenants on a host, how we know, and whether it was tried here. "Observed" means seen from
 inside a box (the Claude Code probe, the Muse post), "documented" means stated by the project or paper, and "inferred" is
-mine. The tenant count that matters on this 7 GiB machine is in `capacity.md`.
+mine. The full probe findings, including the disk/cgroup/egress ones that aren't capacity tricks, live in
+`claude-code-box.md`. The tenant count that matters on this 7 GiB machine is in `capacity.md`.
 
 ## Do not back memory until it is used
 
