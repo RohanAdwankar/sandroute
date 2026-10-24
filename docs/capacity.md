@@ -331,6 +331,25 @@ memory snapshots. Tried here, at 576 tenants with every other setting the same, 
 123 MiB against about 37 for one restored from the shared snapshot, so what is saved in snapshot writes is lost in memory.
 Cold booting suits a host with room to spare, as Claude Code's evidently is, and not a 7 GiB laptop.
 
+## What one command costs in each tier
+
+The same command, run 60 times in each place, in a project of 300 small files (`bench/tiers.mts`; medians, with 95th percentiles for the slowest of the three):
+
+| command | host, nothing around it | light sandbox | Firecracker, warm |
+|---|---|---|---|
+| `ls` | 4.7 ms | 6.5 ms | 11.6 ms (p95 22.6) |
+| `cat` a file | 4.5 ms | 6.2 ms | 11.3 ms |
+| `grep -rn` over 300 files | 5.0 ms | 7.2 ms | 13.4 ms (p95 27.1) |
+| `find` and sort | 6.0 ms | 7.5 ms | 14.3 ms |
+| `python3` start | 12.5 ms | 13.9 ms | 18.0 ms |
+| `python3`, 85 ms of cpu | 84.0 ms | 85.7 ms | 89.7 ms |
+
+The light sandbox adds about 1.7 ms to a command: bubblewrap building the namespaces and the seccomp program. A warm VM adds about 6 to 7 ms, which is the vsock round trip plus
+the sync (the host walks the workspace and reports changes before the command, and the guest reports back after it) and shows in the p95 when a sync has something to carry. The
+compute inside the VM is close to native: 85 ms of cpu took 89.7 ms, about 5% more. So the VM's cost is the fixed price of getting a command in and out, a few milliseconds, which is
+why a command that only reads files is worth keeping out of it. A wake, meaning a released VM restored from the shared snapshot and then running one command through the whole
+path, takes about 95 ms (p95 102). One run on this machine, with nothing else on it; the final run on an idle machine may differ a little.
+
 ## Compared with the sandboxes in the earlier posts
 
 The two earlier posts on this blog measured three products from the inside: Claude Code, Instinct (E2B) and
