@@ -90,10 +90,20 @@ cert trusted by the system exists at `/root/.ccr/agent-proxy-ca.crt` /
 proxying toolkit (`http-proxy`, `proxy-from-env`, `pac-proxy-agent`) — the proxy, when it's
 there, is plausibly a Node process, not a C/Go binary.
 
-**The proxy port was closed in 3 of 3 samples, hours apart.** `127.0.0.1:34683` refused
-every connection attempt across three separate sessions on two different days. Whatever it's
-for, it is not a steadily-running local service — more likely spun up only transiently, or
-vestigial for the path we were testing.
+**The proxy port never opened, including during a deliberate 3-minute watch over live
+usage.** Across four samples now: three idle-shell snapshots refused outright, and a fourth
+that polled every 200ms for a full, uninterrupted 3 minutes while real messages were sent to
+a separate Claude Code session on the same box and real replies came back. It never opened
+once. This is a materially stronger result than "we happened to check while nothing was
+going on" — it's a window that specifically covered live model activity, and the port stayed
+shut through all of it.
+
+That doesn't prove the CA cert and Node proxy toolkit aren't used for anything — only that
+this specific local TCP port isn't where live model-API traffic goes, at least not for
+whatever kind of request a plain chat reply is. It could be used for a narrower class of
+request we didn't trigger, or the interception could happen somewhere that isn't a
+`127.0.0.1` listener at all (a vsock-backed proxy wouldn't show up as a local TCP port the
+same way). Confirmed: not this port, not during ordinary chat. Open: what it's actually for.
 
 **Raw TCP, arbitrary ports:** `/dev/tcp` connects (no curl, no proxy env, no DNS lookup —
 pure `connect()`) to `1.1.1.1` and `8.8.8.8` on **port 53 failed**; the same two addresses on
@@ -163,5 +173,6 @@ solved without a kernel patch — because the privilege model is different from 
   specific to that destination.
 - What, concretely, enforces it — host-side is the best-supported guess but isn't proven;
   we have no way to see past the guest's own NIC from inside it.
-- Whether `127.0.0.1:34683` is ever actually live during a real model turn, or whether that
-  env var is vestigial for the code path being exercised here.
+- What `127.0.0.1:34683` and its CA cert are actually for, given a deliberate 3-minute
+  watch during live usage never saw it open. Either it's for a narrower class of request
+  than a plain chat reply, or the real interception point isn't a local TCP listener.
