@@ -40,6 +40,22 @@ test("the vm boots once, on the first command that needs it", async () => {
   assert.equal(vm.boots, 1);
 });
 
+test("a harness hint wakes the vm ahead of the first command, and releases it the moment a turn ends", async () => {
+  const ws = mkdtempSync(path.join(tmpdir(), "sr-"));
+  const vm = new CountingVm();
+  const s = new Sandroute({ workspace: ws, vm, idleMs: 60_000 });   // a window so long that only the hint can release it
+  await s.prewarm();
+  assert.equal(vm.boots, 1, "the machine is up before any command");
+  const r = await s.run("python3 -c 'print(1)'");
+  assert.equal(r.booted, false, "so the first command does not pay for the wake");
+  assert.equal(vm.boots, 1);
+  assert.equal(await s.release(), true, "the end of the turn releases it without waiting for the timer");
+  assert.equal(vm.stops, 1);
+  await s.prewarm();
+  assert.equal(vm.boots, 2, "and the next turn wakes it again");
+  await s.stop();
+});
+
 test("git works in-process with no git binary", async () => {
   const { s } = setup();
   await s.run("git init");

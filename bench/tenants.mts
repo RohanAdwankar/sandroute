@@ -42,6 +42,8 @@ const vmm = arg("--vmm", "firecracker") as "firecracker" | "cloud-hypervisor";
 const vcpus = Number(arg("--vcpus", "1"));
 const noSnapshot = process.argv.includes("--no-snapshot");   // cold boot every VM; nothing to restore from
 const killOnRelease = process.argv.includes("--kill-on-release");   // release a VM by killing it: nothing is written, the next wake is a cold boot
+const hintStart = process.argv.includes("--hint-start");   // the harness tells the sandbox a turn is starting
+const hintEnd = process.argv.includes("--hint-end");       // ...and when it has ended
 const balloon = process.argv.includes("--balloon");           // return freed guest memory to the host
 const seed = Number(arg("--seed", "1"));
 const tracesDir = arg("--traces", path.resolve(import.meta.dirname, "traces"));
@@ -152,7 +154,8 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
   await until(rng() * idleMean * 1000);                       // tenants do not all start together
   while (!stopping && Date.now() < endAt) {
     const t = traces[Math.floor(rng() * traces.length)];
-    fresh(ws); s.vm.clearScratch?.();   // a new task is a new session: the host forgets the last one's /tmp as well
+    fresh(ws); s.vm.clearScratch?.();
+    if (hintStart) void s.prewarm().catch(() => {});   // a new task is a new session: the host forgets the last one's /tmp as well
     const t0 = Date.now();
     activeTurns++;
     for (let k = 0; k < t.calls.length && !stopping; k++) {
@@ -165,6 +168,7 @@ async function tenant(i: number, s: Sandroute, endAt: number, ws: string) {
       recs.push({ tenant: i, tool: c.tool, tier, ms: Date.now() - a, woke: s.bootCount > boots, err, at: Math.round((a - startedAt) / 1000), ownMs: intrinsic[`${t.id}#${c.idx}`] ?? 0 });
     }
     activeTurns--;
+    if (hintEnd) await s.release();
     turns.push(Date.now() - t0);
     await until(awaySec() * 1000);                            // the person is away
   }
@@ -234,7 +238,7 @@ const lat = recs.map((r) => Math.max(0, r.ms - r.ownMs)), woke = recs.filter((r)
 const max = (k: string) => Math.max(...samples.map((s) => s[k]), 0);
 const mean = (k: string) => samples.length ? samples.reduce((a, s) => a + s[k], 0) / samples.length : 0;
 const result = {
-  design, vmm, vcpus, noSnapshot, killOnRelease, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
+  design, vmm, vcpus, noSnapshot, killOnRelease, hintStart, hintEnd, tenants: N, minutes, idleMeanSec: idleMean, windowMs, memMiB, seed, wallSec: Math.round(wall), aborted: aborted ?? null,
   turns: turns.length, calls: recs.length, errors: errs.length, errorSample: [...new Set(errs.map((e) => `${e.tool}: ${e.err}`))].slice(0, 5),
   observedDutyCycle: +(turns.reduce((a, b) => a + b, 0) / 1000 / (N * wall)).toFixed(3),
   // what the design added to each call: its time less the same call's calibrated time

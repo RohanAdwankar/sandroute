@@ -120,18 +120,7 @@ export class Sandroute {
       clearTimeout(this.idleTimer);
       this.inFlight++;
       try {
-        if (!this.vmUp) {
-          const tb = Date.now();
-          this.vmBoot ??= this.vm.boot(this.opts.workspace).then(() => {
-            this.vmUp = true;
-            this.bootCount++;
-            // the meter starts when firecracker starts, not when the command does
-            this.allocSince = tb;
-          });
-          booted = true;
-          await this.vmBoot;
-          bootMs = Date.now() - tb;
-        }
+        ({ booted, bootMs } = await this.ensureUp());
         res = await this.vm.exec(command, { cwd: cwd ?? this.at });
       } finally {
         this.inFlight--;
@@ -142,6 +131,36 @@ export class Sandroute {
     if (this.opts.logFile)
       appendFileSync(this.opts.logFile, JSON.stringify({ t: new Date().toISOString(), command, tier: out.tier, reason: out.reason, booted, bootMs, ms: out.ms, exitCode: out.exitCode, vmAllocatedMs: this.vmAllocatedMs }) + "\n");
     return out;
+  }
+
+  private async ensureUp(): Promise<{ booted: boolean; bootMs: number }> {
+    if (this.vmUp) return { booted: false, bootMs: 0 };
+    const tb = Date.now();
+    this.vmBoot ??= this.vm.boot(this.opts.workspace).then(() => {
+      this.vmUp = true;
+      this.bootCount++;
+      // the meter starts when the machine starts, not when the command does
+      this.allocSince = tb;
+    });
+    await this.vmBoot;
+    return { booted: true, bootMs: Date.now() - tb };
+  }
+
+  /**
+   * A hint from the harness: a turn is starting and the agent will probably want the VM, so bring
+   * it up now, while the model is still thinking about its first command, and not when the command
+   * arrives. It costs a wake for a turn that never needs one, so it is for a harness that has reason to expect a VM.
+   */
+  async prewarm(): Promise<void> {
+    await this.releasing;
+    clearTimeout(this.idleTimer);
+    this.inFlight++;
+    try {
+      await this.ensureUp();
+    } finally {
+      this.inFlight--;
+      this.armIdle();
+    }
   }
 
   /**
@@ -237,7 +256,8 @@ export class Sandroute {
   }
 
   /**
-   * Hand the VM back. The next VM-tier command brings one up again, which is cheap when
+   * Hand the VM back. A harness that knows its agent's turn has ended calls this at once, instead of leaving the idle
+   * timer to find out. The next VM-tier command brings one up again, which is cheap when
    * the backend restores a snapshot. Safe to call at any time: a command in flight keeps
    * the VM, and the idle timer re-arms when it finishes.
    *
