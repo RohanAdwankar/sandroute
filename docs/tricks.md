@@ -85,3 +85,9 @@ version of what Claude Code does by keeping a disk and killing the VM.
 
 Now that disk wait is gone at 576, cpu is what is left, so diff snapshots matter less. Then `page_reporting_order=9`. Then THP and KSM (Claude Code's
 kernel has `CONFIG_KSM=y`, but whether it is used is not shown), which could let identical pages across guests share memory.
+
+## Warm the interpreter into the snapshot
+
+The pristine snapshot is taken after the guest has booted, so whatever is in the guest's page cache at that moment is in every VM restored from it. Booting alone leaves the cache nearly empty, and the first command in a restored VM then reads its interpreter and libraries from the virtual disk. For `python3 -m unittest`, which imports a lot, that was a wake costing 530 ms of cpu and 307 ms of wall time. The init script now imports the commonly used standard library and runs a few shell utilities before the agent starts, and the same wake costs 161 ms of cpu and 116 ms of wall time.
+
+I found this by accident. The first Rust guest agent was a static binary, and capacity fell: at 560 tenants the p99 went from 0.5 s to 4.6 s and the VMs used 45% more memory. The earlier agent was a Python program, so Python was always in the snapshot's page cache. Changing the agent language had removed a warm-up nobody knew was there. With the warm-up written down, 560 tenants have a p99 of 0.18 s, 2.1 GiB of VM memory instead of 3.2 GiB, and 30% mean cpu instead of 40%. The cache is shared copy on write across every restored VM, so it costs the host memory once.

@@ -1,0 +1,23 @@
+2026-10-24T06:18:30+00:00
+Linux oxroute 7.0.0-38-generic #38-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep  4 09:10:14 UTC 2026 x86_64 GNU/Linux
+model name	: 11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz
+cores: 4
+MemTotal:        7396708 kB
+MemAvailable:    6200640 kB
+SwapTotal:       4194300 kB
+load: 0.29 0.17 0.05 2/265 3264167
+git: 6a4a983609c46f7c5e5edebdfff3bf575b01cbed 2 uncommitted files
+rustc: rustc 1.98.1 (48a229cea 2026-09-01)
+Firecracker v1.17.0
+kata-runtime  : 4.3.1
+runsc version release-20261019.0
+containerd github.com/containerd/containerd/v2 v2.4.1 f2551031d7276a770f65f98c9b52e57e7dad07e8
+--- processes using cpu at the start
+%CPU   RSS COMMAND
+ 0.8 284340 claude -p --input-format stream-json --output-format stream-json --verbose --permission-mode bypassPermissions --resume 223854b7-1424-48e9-bf8d-d1099f273b75 --model claude-sonnet-5-5
+ 0.4     0 [kswapd0]
+ 0.3 47796 /home/rohan/kata/nerd/bin/containerd --config /home/rohan/kata/final/containerd.toml
+ 0.3     0 [claude] <defunct>
+ 0.2     0 [claude] <defunct>
+ 0.1  7588 /usr/lib/systemd/systemd --user --deserialize=10
+ 0.1     0 [irq/161-iwlwifi:default_queue]

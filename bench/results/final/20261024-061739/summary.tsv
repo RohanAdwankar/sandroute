@@ -1,0 +1,27 @@
+series	design	tenants	seed	p99ms	met	aborted	peakcpu	minavailMiB
+oxroute	oxroute	560	1	10408	false	memory: 178 MiB left	100.0	178.0
+oxroute	oxroute	560	2	4118	false		100.0	302.0
+suspend	suspend	400	1	7345	false		100.0	2718.0
+suspend	suspend	400	2	7978	false		100.0	3198.0
+kept	kept	112	1	198	true		35.0	629.0
+kept	kept	112	2	208	true		31.7	491.0
+kept	kept	144	1	213	false	memory: 299 MiB left	30.5	276.0
+kept	kept	144	2	214	false	memory: 272 MiB left	31.9	159.0
+gvisor-cold	gvisor-cold	80	1	486	true		90.8	4355.0
+gvisor-cold	gvisor-cold	80	2	603	true		94.2	4018.0
+gvisor-cold	gvisor-cold	112	1	1181	true		100.0	3343.0
+gvisor-cold	gvisor-cold	112	2	1759	false		99.6	3087.0
+kata	kata	40	1	390	false	memory: 299 MiB left	24.4	297.0
+kata	kata	40	2	370	false	memory: 286 MiB left	32.3	274.0
+fc-vanilla	kept	32	1	200	true		15.2	2790.0
+fc-vanilla	kept	32	2	206	true		12.5	2740.0
+fc-vanilla	kept	48	1	148	true		15.4	998.0
+fc-vanilla	kept	48	2	201	true		14.6	1046.0
+fc-claude	reclaim	64	1	808	true		38.0	2577.0
+fc-claude	reclaim	64	2	809	true		37.2	2535.0
+fc-claude	reclaim	96	1	813	true		45.1	700.0
+fc-claude	reclaim	96	2	816	false	memory: 279 MiB left	36.4	232.0
+ch-muse	kept	16	1	226	true		16.4	504.0
+ch-muse	kept	16	2	211	true		9.8	563.0
+ch-muse	kept	32	1	40	false	memory: 182 MiB left	7.2	137.0
+ch-muse	kept	32	2	0	false	memory: 224 MiB left	15.2	134.0

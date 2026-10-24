@@ -134,6 +134,11 @@ if [ -n "$gip" ]; then
   echo "sandroute-init: eth0 $gip via $gw, dns ${dns:-1.1.1.1}"
 fi
 
+# Load the interpreter and the commonly used standard library into the page cache, so the snapshot taken after boot carries them and a
+# restored VM does not read them from disk on its first command. A guest agent written in Python used to do this by accident.
+chroot "$R" /usr/bin/python3 -c 'import unittest, json, re, os, sys, subprocess, pathlib, argparse, collections, typing, shutil, tempfile, io, itertools, functools, textwrap, datetime, logging, asyncio' 2>/dev/null
+chroot "$R" /bin/bash -c 'ls / >/dev/null; grep -q . /etc/passwd; sed -n 1p /etc/passwd >/dev/null' 2>/dev/null
+
 while :; do
   chroot "$R" /agent --workspace "$ws" --vsock-port "$port" --upper /.upper --scratch /tmp
   echo "sandroute-init: agent exited $?, restarting"
