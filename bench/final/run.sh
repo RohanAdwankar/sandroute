@@ -17,7 +17,7 @@ exec > >(tee -a "$OUT/log.txt") 2>&1
 cargo build --release --quiet --bins || exit 1
 CRICFG=$(bench/final/setup-cri.sh | tail -1)
 CT="$HOME/kata/nerd/bin/crictl --config $CRICFG"
-$CT info 2>/dev/null | grep -q kata-vanilla || { echo "the running containerd has an older config; stop it (sudo pkill -f 'final/containerd.toml') and run again"; exit 1; }
+[ -n "$ONLY" ] && [[ " $ONLY " != *" kata-vanilla "* ]] || $CT info 2>/dev/null | grep -q kata-vanilla || { echo "the running containerd has an older config; stop it (sudo pkill -f 'final/containerd.toml') and run again"; exit 1; }
 
 clean() {   # delete every pod, then wait for the memory to come back
   $CT pods -q | xargs -r -P 8 -I{} sh -c "$CT stopp {} >/dev/null 2>&1; $CT rmp {} >/dev/null 2>&1"
