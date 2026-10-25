@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
 src, out = sys.argv[1], sys.argv[2]
@@ -50,7 +51,7 @@ for ax, title, ylim, y in ((ax_cpu, "cpu busy (%)", (0, 100), cpu), (ax_ram, "me
 ax_ram.axhline(MEM_TOTAL_GIB, color=MUTED, linestyle="--", linewidth=0.8)
 lines = [ax.plot([], [], color=INK, linewidth=1.6)[0] for ax in (ax_cpu, ax_ram)]
 dots = [ax.plot([], [], "o", color=INK, markersize=4)[0] for ax in (ax_cpu, ax_ram)]
-fig.text(0.02, 0.005, "tile = one active tenant   blue: light sandbox   orange: VM   outline: woke a VM", color=MUTED, fontsize=9, family="monospace")
+fig.text(0.02, 0.005, "tile = one active tenant   blue: light sandbox   orange: VM   bright outline: woke a VM   line + ring: the tenant in a terminal", color=MUTED, fontsize=9, family="monospace")
 
 def text(ax, x, y, s, box=None, **kw):
     return ax.text(x, y, s, family="monospace", va="center", parse_math=False, **({"clip_path": box, "clip_on": True} if box else {}), **kw)
@@ -90,6 +91,13 @@ for f in range(n_frames):
         recent = [x for x in by_tenant.get(k, []) if x["t_ms"] / 1000 <= t][-5:]
         edge = (VM if recent and recent[-1]["tier"] == "vm" else LIGHT) if recent else GRID
         box = big.add_patch(Rectangle((0.02, j + 0.02), 0.96, 0.96, facecolor=PANE, edgecolor=edge, linewidth=1.5)); patches.append(box)
+        # a line from the terminal to the tile of the tenant it follows, and a ring around that tile
+        if k in slots:
+            r, c = divmod(slots[k], cols)
+            patches.append(panes.add_patch(Rectangle((c + 0.02, r + 0.02), 0.96, 0.96, facecolor="none", edgecolor=edge, linewidth=2.5)))
+            to_fig = fig.transFigure.inverted().transform
+            a, b = to_fig(big.transData.transform((0.98, j + 0.5))), to_fig(panes.transData.transform((c, r + 0.5)))
+            patches.append(fig.add_artist(Line2D([a[0], b[0]], [a[1], b[1]], color=edge, linewidth=1.2, alpha=0.8, transform=fig.transFigure)))
         patches.append(text(big, 0.06, j + 0.06, f"tenant {k}", box, color=MUTED, fontsize=8))
         y = j + 0.13
         for x in recent:
