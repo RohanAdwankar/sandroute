@@ -50,7 +50,7 @@ async fn the_light_tier_behaves_the_same_with_and_without_the_filter_across_ever
             let c = c.rewritten(&t.workspace);
             let cmd = if c.tool == "bash" {
                 let command = c.args["command"].as_str().unwrap_or("").to_string();
-                if classify(&known, &command, "/work").tier != Tier::InProcess {
+                if classify(&known, &command, "/work").tier != Tier::Light {
                     continue;
                 }
                 command

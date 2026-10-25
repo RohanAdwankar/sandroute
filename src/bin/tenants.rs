@@ -162,7 +162,7 @@ async fn perform(c: &Cfg, s: &Sandroute, call: &Call) -> Result<(String, String,
         t => anyhow::bail!("unknown tool {t}"),
     }
     let label = format!("{} {}", call.tool, st("filePath").or(st("pattern")).unwrap_or(""));
-    Ok((if c.design == "oxroute" { "inprocess" } else { "vm" }.to_string(), label, out))
+    Ok((if c.design == "oxroute" { "light" } else { "vm" }.to_string(), label, out))
 }
 
 fn head(s: &str) -> String {

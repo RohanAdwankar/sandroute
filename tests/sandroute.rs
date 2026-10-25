@@ -136,7 +136,7 @@ async fn the_vm_boots_once_on_the_first_command_that_needs_it() {
 async fn commands_that_only_touch_files_never_boot_the_vm() {
     let Some(r) = rig(None, |_| {}) else { return };
     let out = r.s.run("grep -c hello a.txt", None).await.unwrap();
-    assert_eq!(out.tier, Tier::InProcess);
+    assert_eq!(out.tier, Tier::Light);
     assert_eq!(out.stdout.trim(), "1");
     assert_eq!(r.vm.n(&r.vm.boots), 0);
 }
@@ -275,7 +275,7 @@ async fn a_command_that_arrives_while_the_vm_is_being_suspended_waits_for_it() {
 async fn with_a_sandbox_commands_that_need_a_machine_still_go_to_it() {
     let Some(r) = rig(None, |_| {}) else { return };
     let light = r.s.run("grep -c secret a.txt || true", None).await.unwrap();
-    assert_eq!(light.tier, Tier::InProcess);
+    assert_eq!(light.tier, Tier::Light);
     for heavy in ["python3 -c 'print(1)'", "npm test", "curl https://example.com", "git clone https://example.com/x.git"] {
         assert_eq!(r.s.run(heavy, None).await.unwrap().tier, Tier::Vm, "{heavy}");
     }
@@ -377,7 +377,7 @@ async fn the_router_and_the_file_tools_use_the_path_the_agent_sees() {
     })
     .unwrap();
     let out = s.run("cat /work/secret.txt", None).await.unwrap();
-    assert_eq!(out.tier, Tier::InProcess, "a path under the agent's workspace is not outside it");
+    assert_eq!(out.tier, Tier::Light, "a path under the agent's workspace is not outside it");
     assert_eq!(out.stdout.trim(), "seen");
     s.write_file("out/new.txt", "hello\n").await.unwrap();
     assert_eq!(std::fs::read_to_string(ws.path().join("out/new.txt")).unwrap(), "hello\n", "a relative path lands in the real workspace");

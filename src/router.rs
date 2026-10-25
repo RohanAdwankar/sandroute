@@ -6,14 +6,14 @@ use std::sync::OnceLock;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
     /// the cheap tier: a namespace sandbox on the host
-    InProcess,
+    Light,
     Vm,
 }
 
 impl Tier {
     pub fn as_str(self) -> &'static str {
         match self {
-            Tier::InProcess => "inprocess",
+            Tier::Light => "light",
             Tier::Vm => "vm",
         }
     }
@@ -195,7 +195,7 @@ pub fn classify(known: &HashSet<String>, command: &str, workspace: &str) -> Deci
         }
     }
     Decision {
-        tier: Tier::InProcess,
+        tier: Tier::Light,
         reason: if seen.is_empty() { "no commands".to_string() } else { format!("all commands in-process: {}", seen.join(" ")) },
     }
 }

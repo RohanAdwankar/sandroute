@@ -221,7 +221,7 @@ impl Sandroute {
         let d: Decision = if c.o.all_in_vm { Decision { tier: Tier::Vm, reason: "all commands run in the VM".into() } } else { classify(&c.known, command, &c.at) };
         let (mut booted, mut boot_ms) = (false, 0);
         let (stdout, stderr, exit_code);
-        if d.tier == Tier::InProcess {
+        if d.tier == Tier::Light {
             let r = c.o.light.as_ref().expect("checked at construction").exec(command, cwd, &BTreeMap::new()).await;
             (stdout, stderr, exit_code) = (r.stdout, r.stderr, r.exit_code);
         } else {
@@ -372,7 +372,7 @@ impl Sandroute {
     async fn file_op<T>(&self, op: &str, file: &str, f: impl std::future::Future<Output = Result<T>>) -> Result<T> {
         let t0 = Instant::now();
         let r = f.await;
-        self.c.log(json!({"t": now_iso(), "command": format!("{op} {file}"), "tier": "inprocess", "reason": "file tool, served by the sandbox", "booted": false, "bootMs": 0,
+        self.c.log(json!({"t": now_iso(), "command": format!("{op} {file}"), "tier": "light", "reason": "file tool, served by the sandbox", "booted": false, "bootMs": 0,
             "ms": t0.elapsed().as_millis() as u64, "exitCode": if r.is_err() { 1 } else { 0 }, "vmAllocatedMs": self.c.vm_allocated().as_millis() as u64}));
         r
     }

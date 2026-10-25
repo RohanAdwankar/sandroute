@@ -13,9 +13,9 @@ fn tier(c: &str) -> Tier {
 
 #[test]
 fn text_tools_stay_in_the_cheap_tier() {
-    assert_eq!(tier("sed -i 's/a/b/' f.txt"), Tier::InProcess);
-    assert_eq!(tier("cat a | grep b | sort | uniq -c"), Tier::InProcess);
-    assert_eq!(tier("for f in *.txt; do wc -l $f; done"), Tier::InProcess);
+    assert_eq!(tier("sed -i 's/a/b/' f.txt"), Tier::Light);
+    assert_eq!(tier("cat a | grep b | sort | uniq -c"), Tier::Light);
+    assert_eq!(tier("for f in *.txt; do wc -l $f; done"), Tier::Light);
 }
 
 #[test]
@@ -57,9 +57,9 @@ fn questions_about_the_machine_go_to_the_vm_so_the_agent_gets_a_true_answer() {
 fn paths_outside_the_workspace_go_to_the_vm_and_paths_inside_do_not() {
     assert_eq!(tier("ls /usr/bin | grep chrom"), Tier::Vm);
     assert_eq!(tier("cat /tmp/out.json"), Tier::Vm);
-    assert_eq!(tier(&format!("cat {WS}/a.txt")), Tier::InProcess);
-    assert_eq!(tier("grep x f 2>/dev/null"), Tier::InProcess);
-    assert_eq!(tier("sed 's/quick/slow/' a.txt"), Tier::InProcess);
+    assert_eq!(tier(&format!("cat {WS}/a.txt")), Tier::Light);
+    assert_eq!(tier("grep x f 2>/dev/null"), Tier::Light);
+    assert_eq!(tier("sed 's/quick/slow/' a.txt"), Tier::Light);
 }
 
 #[test]
@@ -70,12 +70,12 @@ fn network_clients_go_to_the_vm() {
 #[test]
 fn a_heredoc_body_is_data_not_shell() {
     // writing a file is writing a file, whatever is in it
-    assert_eq!(tier("cat > page.py <<'PY'\nrows = \"<li>x</li>\"\nCONF = \"/etc/passwd\"\nPY"), Tier::InProcess);
-    assert_eq!(tier("cat > a.sh <<'SH'\ngit rebase main\nexport PATH=/usr/bin\nSH"), Tier::InProcess);
+    assert_eq!(tier("cat > page.py <<'PY'\nrows = \"<li>x</li>\"\nCONF = \"/etc/passwd\"\nPY"), Tier::Light);
+    assert_eq!(tier("cat > a.sh <<'SH'\ngit rebase main\nexport PATH=/usr/bin\nSH"), Tier::Light);
     // an unquoted delimiter is still a heredoc
-    assert_eq!(tier("cat > n.txt <<EOF\nsee /var/log/syslog\nEOF"), Tier::InProcess);
+    assert_eq!(tier("cat > n.txt <<EOF\nsee /var/log/syslog\nEOF"), Tier::Light);
     // two heredocs on one line, bodies in order
-    assert_eq!(tier("cat <<A > x && cat <<B > y\n/etc/one\nA\n/etc/two\nB"), Tier::InProcess);
+    assert_eq!(tier("cat <<A > x && cat <<B > y\n/etc/one\nA\n/etc/two\nB"), Tier::Light);
     // and the shell around the heredoc is still read
     assert_eq!(tier("cat > f.txt <<'EOF' && cat /etc/hosts\njust text\nEOF"), Tier::Vm);
     assert_eq!(tier("cat /etc/hosts"), Tier::Vm);
