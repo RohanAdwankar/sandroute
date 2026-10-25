@@ -24,3 +24,7 @@ tree-sitter-bash = "0.25"
 
 [profile.release]
 opt-level = 2
+
+[[bin]]
+name = "sandroute-mcp"
+path = "src/bin/mcp.rs"
