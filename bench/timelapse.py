@@ -1,7 +1,8 @@
-# Renders a timelapse video of a run from its event log: terminal panes for the tenants that are active (blue border: the call ran in the
-# light sandbox, orange: in a VM, thick orange: the call woke a VM), and RAM and cpu through the run on the right.
+# Renders a timelapse video of a run from its event log. Left: two large terminals, each following one active tenant. Middle: one tile per
+# active tenant, in a grid that steps up and down in size with how many there are (blue: the last call ran in the light sandbox, orange:
+# in a VM, outlined: it woke a VM). Right: cpu, memory, and counts so far.
 # Run: uv run --with matplotlib --with numpy bench/timelapse.py RUN.events.jsonl OUT.mp4 [speed]
-import json, subprocess, sys
+import json, math, subprocess, sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -9,9 +10,9 @@ import numpy as np
 from matplotlib.patches import Rectangle
 
 src, out = sys.argv[1], sys.argv[2]
-SPEED, FPS = float(sys.argv[3]) if len(sys.argv) > 3 else 6.0, 15
-COLS, ROWS = 6, 4
-LIGHT, VM, INK, MUTED, BG, PANE = "#2a78d6", "#d9772b", "#e8e8e3", "#8c8b86", "#161614", "#1f1f1c"
+SPEED, FPS = float(sys.argv[3]) if len(sys.argv) > 3 else 8.0, 15
+STEPS = [6, 12, 24, 48, 96, 192, 384, 768, 1536]  # tile counts the grid steps through
+LIGHT, VM, INK, MUTED, BG, PANE, GRID = "#2a78d6", "#d9772b", "#e8e8e3", "#8c8b86", "#161614", "#1f1f1c", "#3a3a36"
 MEM_TOTAL_GIB = 7.05
 
 ev = [json.loads(l) for l in open(src)]
@@ -26,58 +27,89 @@ cpu = np.array([s["cpuBusy"] for s in samples], dtype=float)
 by_tenant = {}
 for c in calls:
     by_tenant.setdefault(c["tenant"], []).append(c)
+call_t = np.array([c["t_ms"] / 1000 for c in calls])
+call_vm = np.cumsum([c["tier"] == "vm" for c in calls]); call_woke = np.cumsum([c["woke"] for c in calls])
 end_s = max(ts.max(), max(t["end_ms"] for t in turns) / 1000)
 
-fig = plt.figure(figsize=(12.8, 7.2), dpi=100, facecolor=BG)
-panes = fig.add_axes([0.02, 0.04, 0.66, 0.84]); panes.set_xlim(0, COLS); panes.set_ylim(ROWS, 0); panes.axis("off")
-ax_ram = fig.add_axes([0.74, 0.55, 0.24, 0.33], facecolor=BG)
-ax_cpu = fig.add_axes([0.74, 0.12, 0.24, 0.33], facecolor=BG)
-header = fig.text(0.02, 0.93, "", color=INK, fontsize=15, family="monospace", va="center")
-for ax, title, ylim, y in ((ax_ram, "memory used (GiB)", (0, MEM_TOTAL_GIB), used), (ax_cpu, "cpu busy (%)", (0, 100), cpu)):
-    ax.set_title(title, color=INK, fontsize=11, loc="left"); ax.set_xlim(0, end_s); ax.set_ylim(*ylim)
-    ax.plot(ts, y, color="#3a3a36", linewidth=1)
-    ax.tick_params(colors=MUTED, labelsize=8)
-    for side in ("top", "right"): ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"): ax.spines[side].set_color("#3a3a36")
-ax_ram.axhline(MEM_TOTAL_GIB, color=MUTED, linestyle="--", linewidth=0.8)
-ram_line, = ax_ram.plot([], [], color=INK, linewidth=1.6); cpu_line, = ax_cpu.plot([], [], color=INK, linewidth=1.6)
-ram_dot, = ax_ram.plot([], [], "o", color=INK, markersize=4); cpu_dot, = ax_cpu.plot([], [], "o", color=INK, markersize=4)
-fig.text(0.74, 0.04, "blue: light sandbox     orange: VM", color=MUTED, fontsize=9, family="monospace")
+def short(cmd):
+    return (cmd.split("&&", 1)[1] if cmd.startswith("cd ") and "&&" in cmd else cmd).strip().replace("\n", " ")
 
-slots = {}  # tenant -> pane index, kept while the tenant is active so the layout does not shuffle
+fig = plt.figure(figsize=(12.8, 7.2), dpi=100, facecolor=BG)
+big = fig.add_axes([0.02, 0.04, 0.23, 0.84]); big.set_xlim(0, 1); big.set_ylim(2, 0); big.axis("off")
+panes = fig.add_axes([0.27, 0.04, 0.46, 0.84]); panes.axis("off")
+ax_cpu = fig.add_axes([0.78, 0.71, 0.20, 0.17], facecolor=BG)
+ax_ram = fig.add_axes([0.78, 0.45, 0.20, 0.17], facecolor=BG)
+stats = fig.add_axes([0.78, 0.04, 0.20, 0.31]); stats.set_xlim(0, 1); stats.set_ylim(1, 0); stats.axis("off")
+header = fig.text(0.02, 0.93, "", color=INK, fontsize=15, family="monospace", va="center")
+for ax, title, ylim, y in ((ax_cpu, "cpu busy (%)", (0, 100), cpu), (ax_ram, "memory used (GiB)", (0, MEM_TOTAL_GIB), used)):
+    ax.set_title(title, color=INK, fontsize=10, loc="left"); ax.set_xlim(0, end_s); ax.set_ylim(*ylim)
+    ax.plot(ts, y, color=GRID, linewidth=1)
+    ax.tick_params(colors=MUTED, labelsize=7)
+    for side in ("top", "right"): ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"): ax.spines[side].set_color(GRID)
+ax_ram.axhline(MEM_TOTAL_GIB, color=MUTED, linestyle="--", linewidth=0.8)
+lines = [ax.plot([], [], color=INK, linewidth=1.6)[0] for ax in (ax_cpu, ax_ram)]
+dots = [ax.plot([], [], "o", color=INK, markersize=4)[0] for ax in (ax_cpu, ax_ram)]
+fig.text(0.02, 0.005, "tile = one active tenant   blue: light sandbox   orange: VM   outline: woke a VM", color=MUTED, fontsize=9, family="monospace")
+
+def text(ax, x, y, s, box=None, **kw):
+    return ax.text(x, y, s, family="monospace", va="center", parse_math=False, **({"clip_path": box, "clip_on": True} if box else {}), **kw)
+
 proc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "1280x720", "-r", str(FPS), "-i", "-",
                          "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", out], stdin=subprocess.PIPE)
 n_frames = int(end_s * FPS / SPEED)
-patches = []
+patches, slots, featured, cap_before = [], {}, [], None
 for f in range(n_frames):
     t = f * SPEED / FPS
     active = [x["tenant"] for x in turns if x["start_ms"] / 1000 <= t <= x["end_ms"] / 1000]
-    for k in [k for k in slots if k not in active]: del slots[k]
-    free = [i for i in range(COLS * ROWS) if i not in slots.values()]
-    for k in active:
-        if k not in slots and free: slots[k] = free.pop(0)
     for p in patches: p.remove()
     patches = []
+    # the middle: every active tenant gets a tile
+    cap = next(s for s in STEPS if s >= len(active))
+    cols = math.ceil(math.sqrt(cap * 0.97)); rows = math.ceil(cap / cols)
+    panes.set_xlim(0, cols); panes.set_ylim(rows, 0)
+    if cap != cap_before:
+        slots.clear(); cap_before = cap
+    for k in [k for k in slots if k not in active]: del slots[k]
+    free = [i for i in range(cap) if i not in slots.values()]
+    for k in active:
+        if k not in slots: slots[k] = free.pop(0)
     for k, i in slots.items():
-        r, c = divmod(i, COLS)
-        recent = [x for x in by_tenant.get(k, []) if x["t_ms"] / 1000 <= t][-3:]
-        last = recent[-1] if recent else None
-        edge = (VM if last["tier"] == "vm" else LIGHT) if last else "#3a3a36"
-        box = panes.add_patch(Rectangle((c + 0.03, r + 0.04), 0.94, 0.92, facecolor=PANE, edgecolor=edge, linewidth=3 if last and last["woke"] and t - last["t_ms"] / 1000 < 3 else 1.2))
-        patches.append(box)
-        def put(x, y, text, **kw):  # text never leaves its pane
-            patches.append(panes.text(x, y, text, family="monospace", va="center", clip_path=box, clip_on=True, **kw))
-        put(c + 0.06, r + 0.13, f"tenant {k}", color=MUTED, fontsize=7)
-        y = r + 0.27
+        r, c = divmod(i, cols)
+        recent = [x for x in by_tenant.get(k, []) if x["t_ms"] / 1000 <= t][-1:]
+        last = recent[0] if recent else None
+        color = (VM if last["tier"] == "vm" else LIGHT) if last else GRID
+        woke = bool(last and last["woke"] and t - last["t_ms"] / 1000 < 3)
+        patches.append(panes.add_patch(Rectangle((c + 0.06, r + 0.06), 0.88, 0.88, facecolor=color, alpha=1.0 if woke else 0.6, edgecolor=INK if woke else "none", linewidth=1.5)))
+    # the left: two large terminals, each following a tenant until its turn ends
+    featured = [k for k in featured if k in active]
+    newest = sorted(((max((x["t_ms"] for x in by_tenant.get(k, []) if x["t_ms"] / 1000 <= t), default=-1), k) for k in active), reverse=True)
+    for _, k in newest:
+        if len(featured) < 2 and k not in featured: featured.append(k)
+    for j, k in enumerate(featured):
+        recent = [x for x in by_tenant.get(k, []) if x["t_ms"] / 1000 <= t][-5:]
+        edge = (VM if recent and recent[-1]["tier"] == "vm" else LIGHT) if recent else GRID
+        box = big.add_patch(Rectangle((0.02, j + 0.02), 0.96, 0.96, facecolor=PANE, edgecolor=edge, linewidth=1.5)); patches.append(box)
+        patches.append(text(big, 0.06, j + 0.06, f"tenant {k}", box, color=MUTED, fontsize=8))
+        y = j + 0.13
         for x in recent:
-            put(c + 0.06, y, ("$ " + (x["cmd"].split("&&", 1)[1] if x["cmd"].startswith("cd ") and "&&" in x["cmd"] else x["cmd"]).strip().replace("\n", " "))[:23], color=VM if x["tier"] == "vm" else LIGHT, fontsize=7); y += 0.12
-            for line in (x["out"] or "").split("\n")[:1]:
-                put(c + 0.06, y, line[:24], color=INK, fontsize=6.5); y += 0.12
+            patches.append(text(big, 0.06, y, ("$ " + short(x["cmd"]))[:38], box, color=VM if x["tier"] == "vm" else LIGHT, fontsize=7.5)); y += 0.052
+            for line in (x["out"] or "").split("\n")[:2]:
+                patches.append(text(big, 0.06, y, line[:38], box, color=INK, fontsize=7)); y += 0.052
+            y += 0.02
+    # the right: counts so far
+    n = int(np.searchsorted(call_t, t, side="right"))
     up = vms.get(int(t), [])
-    header.set_text(f"{meta['tenants']} tenants   active {len(active):>3}   VMs up {len(up):>3}   t = {int(t // 60)}:{int(t % 60):02d}")
+    rows_ = [("active tenants", f"{len(active)} of {meta['tenants']}"), ("VMs up", f"{len(up)}"), ("calls so far", f"{n}"),
+             ("  in the light sandbox", f"{n - int(call_vm[n - 1]) if n else 0}"), ("  in a VM", f"{int(call_vm[n - 1]) if n else 0}"), ("VM wakes", f"{int(call_woke[n - 1]) if n else 0}")]
+    for j, (a, b) in enumerate(rows_):
+        patches.append(text(stats, 0.0, 0.07 + j * 0.15, a, color=MUTED, fontsize=8.5))
+        patches.append(text(stats, 1.0, 0.07 + j * 0.15, b, color=INK, fontsize=8.5, ha="right"))
+    header.set_text(f"{meta['tenants']} tenants   t = {int(t // 60)}:{int(t % 60):02d}")
     m = ts <= t
-    ram_line.set_data(ts[m], used[m]); cpu_line.set_data(ts[m], cpu[m])
-    if m.any(): ram_dot.set_data([ts[m][-1]], [used[m][-1]]); cpu_dot.set_data([ts[m][-1]], [cpu[m][-1]])
+    for ln, dt, y in zip(lines, dots, (cpu, used)):
+        ln.set_data(ts[m], y[m])
+        if m.any(): dt.set_data([ts[m][-1]], [y[m][-1]])
     fig.canvas.draw()
     proc.stdin.write(np.asarray(fig.canvas.buffer_rgba()).tobytes())
 proc.stdin.close(); proc.wait()
