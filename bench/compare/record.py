@@ -1,6 +1,7 @@
 # Runs a command that starts many sandboxes and records, ten times a second, how much memory and cpu the machine uses and how many VMs
 # exist, plus the moment each "Sandbox N" line is printed. Stops the command, like the capacity benchmark does, if free memory falls
-# under GUARD MiB. Writes JSON lines: {"t", "avail_mib", "cpu", "vms"}, {"t", "done"}, and {"t", "killed"} or {"t", "exit"}.
+# under GUARD MiB. Python buffers its output when it writes to a pipe, so run Python programs with PYTHONUNBUFFERED=1 or the "Sandbox N"
+# lines all arrive at exit. Writes JSON lines: {"t", "avail_mib", "cpu", "vms"}, {"t", "done"}, and {"t", "killed"} or {"t", "exit"}.
 #   uv run bench/compare/record.py OUT.jsonl "libkrun VM" -- uv run bench/compare/microsandbox_hundred.py 130
 import json, os, signal, subprocess, sys, threading, time
 

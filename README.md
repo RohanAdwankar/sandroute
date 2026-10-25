@@ -25,7 +25,7 @@ Most agent shell calls are `sed`, `grep`, `cat` and file edits. Those run in a l
 
 [![736 tenants](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
 
-130 sandboxes started at once, microsandbox against sandroute: microsandbox's VMs fill the machine's memory with nothing finished and the run is stopped, while sandroute finishes all 130.
+130 sandboxes started at once, microsandbox against sandroute: microsandbox boots all 130 VMs at once, they fill the machine's memory before most have finished, and the run is stopped with 34 done, while sandroute finishes all 130.
 
 [![130 sandboxes at once](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
 
