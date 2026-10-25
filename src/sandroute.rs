@@ -77,6 +77,8 @@ struct Core {
 #[derive(Clone)]
 pub struct Sandroute {
     c: Arc<Core>,
+    /// Scratch space this sandbox made for itself (session snapshots, and the workspace for `create`), removed by `close`.
+    root: Option<PathBuf>,
 }
 
 fn now_iso() -> String {
@@ -141,13 +143,27 @@ impl Sandroute {
                 c.conflicts.lock().unwrap().extend(paths);
             }
         }));
-        Ok(Sandroute { c })
+        Ok(Sandroute { c, root: None })
     }
 
     /// A sandbox with defaults, for trying it out: a fresh workspace, the light sandbox, and Firecracker VMs restored from one shared snapshot,
-    /// from the kernel and image in `$SANDROUTE_ASSETS` (default `~/fcassets`, built by `scripts/build-rootfs.sh`). A VM is only started
-    /// when a command needs one, and is released after five idle seconds. Call `close` when done.
+    /// from the kernel and image in `$SANDROUTE_ASSETS` (default `~/fcassets`, made by `scripts/setup.sh`). A VM is only started when a command
+    /// needs one, and is released after five idle seconds. Call `close` when done.
     pub async fn create() -> Result<Self> {
+        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
+        let workspace = root.join("work");
+        std::fs::create_dir_all(&workspace)?;
+        Self::build(workspace, root).await
+    }
+
+    /// The same, over a directory that already exists, such as a project. Its files are seen at `/work` inside the sandbox, `close` leaves
+    /// them alone, and changes the sandbox makes land in the directory.
+    pub async fn open(dir: impl AsRef<Path>) -> Result<Self> {
+        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
+        Self::build(dir.as_ref().canonicalize()?, root).await
+    }
+
+    async fn build(workspace: PathBuf, root: PathBuf) -> Result<Self> {
         static PRIMED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
         let assets = std::env::var("SANDROUTE_ASSETS").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("fcassets"));
         let vm = |root: &Path| {
@@ -162,24 +178,23 @@ impl Sandroute {
         };
         // the first boot writes the shared snapshot, so it happens once and the sandboxes created meanwhile wait for it
         PRIMED.get_or_try_init(|| async {
-            let root = tempfile::Builder::new().prefix("sandroute-prime-").tempdir()?;
-            let warm = vm(root.path());
-            warm.boot(&root.path().join("work")).await?;
+            let prime = tempfile::Builder::new().prefix("sandroute-prime-").tempdir()?;
+            let warm = vm(prime.path());
+            warm.boot(&prime.path().join("work")).await?;
             warm.stop().await
         }).await?;
-        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
-        let workspace = root.join("work");
-        std::fs::create_dir_all(&workspace)?;
-        Sandroute::new(SandrouteOptions {
+        let mut sandbox = Sandroute::new(SandrouteOptions {
             light: Some(Sandbox::new(SandboxOptions::new(&workspace).mount_at("/work"))),
             vm: Arc::new(vm(&root)), workspace, log_file: None, idle: Some(Duration::from_secs(5)), all_in_vm: false, workspace_path: Some("/work".into()),
-        })
+        })?;
+        sandbox.root = Some(root);
+        Ok(sandbox)
     }
 
-    /// Stop the VM if one is up and delete the workspace.
+    /// Stop the VM if one is up and delete what `create` or `open` made for itself.
     pub async fn close(self) -> Result<()> {
         self.stop().await?;
-        if let Some(root) = self.c.o.workspace.parent() {
+        if let Some(root) = &self.root {
             std::fs::remove_dir_all(root)?;
         }
         Ok(())
