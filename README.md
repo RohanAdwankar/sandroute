@@ -21,7 +21,7 @@ Most agent shell calls are `sed`, `grep`, `cat` and file edits. Those run in a l
 
 ## See it
 
-736 tenants on a 7 GiB laptop, replayed from real agent sessions at 8x speed: a tile per active tenant (blue ran in the light sandbox, orange in a VM, outlined woke a VM), two terminals following individual tenants, and cpu, memory and counts on the right.
+736 tenants on a 7 GiB laptop, replayed from real agent sessions at 8x speed: a tile per active tenant (blue ran in the light sandbox, orange in a VM, outlined woke a VM), two terminals following individual tenants (a line and a ring connect each to its tile), and cpu, memory and counts on the right.
 
 [![736 tenants](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
 
