@@ -19,6 +19,18 @@ Most agent shell calls are `sed`, `grep`, `cat` and file edits. Those run in a l
 - `guest-agent/`: the static musl agent inside the VM. `scripts/build-rootfs.sh` builds the image; `scripts/net-setup.sh` creates the tap device (needs root once).
 - `src/bin/tenants.rs`: the capacity benchmark. `src/bin/tiers.rs`: the cost of one command in each tier. `src/bin/report.rs`: a table of `bench/results`.
 
+## See it
+
+736 tenants on a 7 GiB laptop, replayed from real agent sessions at 8x speed: a tile per active tenant (blue ran in the light sandbox, orange in a VM, outlined woke a VM), two terminals following individual tenants, and cpu, memory and counts on the right.
+
+[![736 tenants](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
+
+130 sandboxes started at once, microsandbox against sandroute: microsandbox's VMs fill the machine's memory with nothing finished and the run is stopped, while sandroute finishes all 130.
+
+[![130 sandboxes at once](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
+
+Both are rendered from recorded runs by `bench/timelapse.py` and `bench/compare/video.py`.
+
 ## Try it
 
 Build the VM image once (`scripts/build-rootfs.sh`, which needs Firecracker and a kernel in `~/fcassets`, or `$SANDROUTE_ASSETS`), then:
