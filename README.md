@@ -1,62 +1,128 @@
 # sandroute
 
-A sandbox for coding agents that serves many mostly idle tenants on one machine. It is a Rust library (`sandroute`), a static guest agent (`guest-agent`), and the benchmarks that measure it.
+[![736 tenants on a 7 GiB laptop](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
 
-Most agent shell calls are `sed`, `grep`, `cat` and file edits. Those run in a light tier: a bubblewrap namespace with a seccomp allowlist, no VM, on the tenant's workspace. When a command needs a real machine, such as a compiler, a browser, git or the network, sandroute restores a microVM and sends it there. The VM is handed back after an idle window, and a VM that holds no state outside the workspace and `/tmp` is discarded rather than saved.
+*736 agent tenants on one 7 GiB laptop, replayed from real sessions at 8x. Each tile is a sandbox, blue ran in the light sandbox and orange in a microVM.*
 
-## How it routes
-
-- The command line is parsed with tree-sitter-bash. Every command name in it is collected, including those inside `$(...)` and pipelines.
-- If every name is on the light tier's list and the line touches only paths inside the workspace, it runs there.
-- Anything else runs in the VM: unknown binaries, network clients, git, questions about the machine (`command -v`, `env`, `$PATH`) and absolute paths outside the workspace.
-- The VM boots or restores on the first command that needs it. The workspace is host-authoritative: files are pushed in before a VM command and changes are pulled back after.
-
-## Layout
-
-- `src/router.rs`, `src/sandbox.rs`, `src/seccomp.rs`: routing and the light tier.
-- `src/sandroute.rs`: the orchestrator (idle release, pinning while processes are alive, the file tools).
-- `src/vmm.rs`: Firecracker and Cloud Hypervisor, snapshots, balloon. `src/cri.rs`: Kata and gVisor through containerd, used as comparison designs.
-- `guest-agent/`: the static musl agent inside the VM. `scripts/build-rootfs.sh` builds the image; `scripts/net-setup.sh` creates the tap device (needs root once).
-- `src/bin/tenants.rs`: the capacity benchmark. `src/bin/tiers.rs`: the cost of one command in each tier. `src/bin/report.rs`: a table of `bench/results`.
-
-## See it
-
-736 tenants on a 7 GiB laptop, replayed from real agent sessions at 8x speed: a tile per active tenant (blue ran in the light sandbox, orange in a VM, outlined woke a VM), two terminals following individual tenants (a line and a ring connect each to its tile), and cpu, memory and counts on the right.
-
-[![736 tenants](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
-
-130 sandboxes started at once, microsandbox against sandroute: microsandbox boots all 130 VMs at once, they fill the machine's memory before most have finished, and the run is stopped with 34 done, while sandroute finishes all 130.
-
-[![130 sandboxes at once](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
-
-Both are rendered from recorded runs by `bench/timelapse.py` and `bench/compare/video.py`.
+Sandroute is a sandbox for AI coding agents that serves many more tenants per machine than a microVM each. Commands that only touch files run in a locked-down light sandbox, and anything else runs in a Firecracker microVM that is restored from one shared snapshot, started only when a command needs it, and thrown away when it goes idle. On a 7 GiB laptop that holds 736 mostly idle agent tenants, where a plain microVM per tenant holds 48.
 
 ## Try it
 
-Build the VM image once (`scripts/build-rootfs.sh`, which needs Firecracker and a kernel in `~/fcassets`, or `$SANDROUTE_ASSETS`), then:
+You need an x86_64 Linux machine with KVM (any recent laptop or cloud VM that allows nested virtualization). The commands are for Debian or Ubuntu.
 
-```rust
-let sandbox = Sandroute::create().await?;
-sandbox.write_file("random.txt", "hello").await?;
-let res = sandbox.run("cat random.txt", None).await?;   // res.stdout, res.exit_code, res.tier
-sandbox.close().await?;
+**1. Install the tools.**
+
+```sh
+sudo apt install bubblewrap e2fsprogs python3 curl git build-essential
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh        # Rust, then open a new shell
+sudo usermod -aG kvm $USER                                              # access to /dev/kvm, then log out and in
 ```
 
-`examples/hundred.rs` does that for a hundred sandboxes at once, the same job as the usual E2B example:
+**2. Get sandroute and build it.** `scripts/setup.sh` downloads Firecracker and a guest kernel and builds the VM image into `~/fcassets` (set `SANDROUTE_ASSETS` to put it elsewhere).
 
-    cargo run --release --example hundred 100       # 0.8 s and 23 MiB on a 7 GiB laptop
-    cargo run --release --example hundred 700 vm    # 18.5 s and 3.1 GiB with every read in a microVM
+```sh
+git clone https://github.com/rohox/sandroute && cd sandroute
+scripts/setup.sh
+cargo build --release --examples --bins
+```
 
-Commands that only touch files run in the light sandbox, so the first run starts no VM at all; `vm` reads the file with `python3`, which does.
+**3. Start a sandbox from code.** This is `examples/quickstart.rs`; run it with `target/release/examples/quickstart`, or use sandroute from your own project with `sandroute = { git = "https://github.com/rohox/sandroute" }`, `tokio` (features `full`) and `anyhow`.
 
-## Test
+```rust
+use sandroute::Sandroute;
 
-    cargo test
-    cargo test --test vm_live -- --ignored   # boots real VMs, needs KVM and the assets in ~/fcassets
+let sandbox = Sandroute::create().await?;                    // a fresh, isolated sandbox
+sandbox.write_file("hello.py", "print('hi')").await?;        // files live in /work
+let res = sandbox.run("python3 hello.py", None).await?;      // runs in a microVM, started on demand
+println!("{} (exit {}, ran in {:?})", res.stdout.trim(), res.exit_code, res.tier);
+let res = sandbox.run("cat hello.py", None).await?;          // only touches files: the light sandbox, no VM
+sandbox.close().await?;                                      // stops the VM, deletes the workspace
+```
+
+```
+hi (exit 0, ran in Vm)
+print('hi') (exit 0, ran in Light)
+```
+
+**4. Give a coding agent a sandbox.** `sandroute-mcp` is an [MCP](https://modelcontextprotocol.io) server that gives an agent the six tools coding agents use (bash, read, write, edit, glob, grep), all running in a sandbox over the current directory. With [opencode](https://opencode.ai):
+
+```sh
+npm i -g opencode-ai          # or: curl -fsSL https://opencode.ai/install | bash
+cd ~/my-project
+cat > opencode.json <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "mcp": { "sandroute": { "type": "local", "command": ["/path/to/sandroute/target/release/sandroute-mcp"] } },
+  "tools": { "bash": false, "read": false, "write": false, "edit": false, "glob": false, "grep": false }
+}
+EOF
+opencode mcp list             # sandroute: connected
+opencode                      # the agent now works in /work, in the sandbox, and your project files change as it edits
+```
+
+The `tools` block turns off opencode's own tools, so every command and every file edit goes through the sandbox. Files the agent writes appear in your project directory; anything it installs or runs stays inside.
+
+**5. Start a lot of sandboxes.** The same job as the usual E2B example, a hundred sandboxes at once, each writing a file and reading it back, is `examples/hundred.rs`:
+
+```sh
+target/release/examples/hundred 100        # 0.8 s and 23 MiB: the read is a file command, so no VM
+target/release/examples/hundred 100 vm     # 2.0 s and 242 MiB: the read runs in a microVM
+target/release/examples/hundred 700 vm     # 18.5 s and 3.1 GiB: 700 microVMs on a 7 GiB laptop
+```
+
+To compare against another local microVM runtime, `uv run bench/compare/microsandbox_hundred.py 100` does the same job with [microsandbox](https://github.com/superradcompany/microsandbox). It uses 4.6 GiB for 100 sandboxes, and at 130 at once the machine runs out of memory. Here are both, started 130 at once on the same laptop:
+
+[![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
+
+*Microsandbox boots all 130 microVMs together, memory climbs to the limit before most have finished, and the run is stopped with 34 done. Sandroute finishes all 130 in 3.4 s.*
+
+## The SDK
+
+`Sandroute` is one sandbox. Everything is async (tokio) and returns `anyhow::Result`.
+
+| | |
+|---|---|
+| `Sandroute::create()` | a sandbox with a fresh, empty workspace |
+| `Sandroute::open(dir)` | a sandbox over an existing directory; the files appear at `/work`, and what the sandbox changes lands in `dir` |
+| `run(command, cwd)` | run a shell command, returns a `RunResult` |
+| `read_file`, `write_file`, `edit_file`, `glob`, `grep_files` | the file tools; they run in the light sandbox, never in a VM |
+| `prewarm()` | start the VM now, when you know the next command will need one |
+| `release()` | hand the VM back now instead of waiting for it to go idle |
+| `close()` | stop everything and delete what `create` made; `open` never deletes your directory |
+
+`RunResult` has `stdout`, `stderr`, `exit_code`, `tier` (`Tier::Light`, the light sandbox, or `Tier::Vm`), `reason` (why that tier), `booted` (this command started the VM) and `ms`.
+
+**What decides where a command runs.** The command line is parsed. If every command in it is a file utility (`ls`, `cat`, `grep`, `sed`, `find` and the like) and it stays inside the workspace, it runs in the light sandbox: a fresh set of namespaces and a seccomp filter around the command, about 6 ms, no VM. Anything else (an interpreter, a compiler, `git`, a network client, `which`, a path outside the workspace) runs in a microVM. You never choose; `res.tier` and `res.reason` tell you what happened.
+
+**The VM's life.** The first command that needs a VM starts one by restoring a snapshot taken once at setup, which takes tens of milliseconds and holds only the pages it touches (about 27 MiB). After five idle seconds the VM is released: killed if the guest holds nothing outside the workspace and `/tmp`, or snapshotted to disk if it does (a `pip install`, say). The next command that needs a VM restores it. The workspace is kept in step both ways around every VM command, so the light sandbox and the VM always see the same files.
+
+**Isolation.** Every sandbox is its own microVM or its own set of namespaces with a seccomp filter (the Docker default profile's 299 system calls), so tenants cannot see each other or the host. The light sandbox has no network. Whether the guest has a network is set when the VM is built (`scripts/net-setup.sh`).
+
+**More control.** `Sandroute::new(SandrouteOptions { .. })` takes your own VM backend (`MicroVm` with `VmOptions` for Firecracker or Cloud Hypervisor, or `CriVm` for Kata and gVisor), memory and vCPU sizes, the idle window, and the workspace path. The benchmarks in `src/bin/` are built on it.
 
 ## Benchmarks
 
-Results, method and caveats are in [docs/capacity.md](docs/capacity.md); the optimisations other providers use are in [docs/tricks.md](docs/tricks.md). The final numbers come from `bench/final/run.sh` on an otherwise idle machine.
+How many tenants one machine serves, replaying 26 recorded agent sessions, is in [docs/capacity.md](docs/capacity.md); the tricks other providers use are in [docs/tricks.md](docs/tricks.md).
 
-    cargo run --release --bin tenants -- --design oxroute --tenants 64 --minutes 6
-    cargo run --release --bin tiers
+| design on a 7 GiB laptop | tenants held (p99 added latency under 1.5 s) |
+|---|---|
+| sandroute | 736 |
+| microVM per tenant, restored from a shared snapshot, released when idle | 640 |
+| the same, kept up | 176 |
+| kill idle VMs and cold boot | 64 |
+| microVM per tenant, cold booted, kept up | 48 |
+| Kata Containers | 40 |
+
+```sh
+target/release/tenants --design oxroute --tenants 64 --minutes 6    # the capacity benchmark
+target/release/tiers                                                  # what one command costs in each tier
+uv run --with matplotlib --with seaborn --with pandas bench/charts.py out/   # the charts
+bench/final/go.sh                                                     # the full run, about 4 hours, on an idle machine
+```
+
+## Test
+
+```sh
+cargo test                                # the router, sandbox, sync, orchestrator and a corpus of recorded commands
+cargo test --test vm_live -- --ignored    # boots real VMs, needs KVM and the setup above
+```
