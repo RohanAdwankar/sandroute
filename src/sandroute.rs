@@ -2,8 +2,9 @@
 //! microVM, which is released when idle and brought back on the next command.
 use crate::fileops::{file_command, FileCall};
 use crate::router::{classify, known_for_sandbox, Decision, Tier};
-use crate::sandbox::Sandbox;
+use crate::sandbox::{Sandbox, SandboxOptions};
 use crate::vm::{Live, VmBackend};
+use crate::vmm::{MicroVm, VmOptions, Vmm};
 use anyhow::{anyhow, bail, Result};
 use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
@@ -141,6 +142,47 @@ impl Sandroute {
             }
         }));
         Ok(Sandroute { c })
+    }
+
+    /// A sandbox with defaults, for trying it out: a fresh workspace, the light sandbox, and Firecracker VMs restored from one shared snapshot,
+    /// from the kernel and image in `$SANDROUTE_ASSETS` (default `~/fcassets`, built by `scripts/build-rootfs.sh`). A VM is only started
+    /// when a command needs one, and is released after five idle seconds. Call `close` when done.
+    pub async fn create() -> Result<Self> {
+        static PRIMED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+        let assets = std::env::var("SANDROUTE_ASSETS").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("fcassets"));
+        let vm = |root: &Path| {
+            let mut o = VmOptions::new(Vmm::Firecracker, assets.join("vmlinux-6.1.128").to_string_lossy(), assets.join("rootfs.ext4").to_string_lossy());
+            o.bin = Some(assets.join("firecracker").to_string_lossy().into());
+            o.vcpus = Some(1);
+            o.mem_mib = Some(256);
+            o.guest_workspace = Some("/work".into());
+            o.snapshot_dir = Some(assets.join("pristine-default"));
+            o.session_dir = Some(root.join("sessions"));
+            MicroVm::new(o)
+        };
+        // the first boot writes the shared snapshot, so it happens once and the sandboxes created meanwhile wait for it
+        PRIMED.get_or_try_init(|| async {
+            let root = tempfile::Builder::new().prefix("sandroute-prime-").tempdir()?;
+            let warm = vm(root.path());
+            warm.boot(&root.path().join("work")).await?;
+            warm.stop().await
+        }).await?;
+        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
+        let workspace = root.join("work");
+        std::fs::create_dir_all(&workspace)?;
+        Sandroute::new(SandrouteOptions {
+            light: Some(Sandbox::new(SandboxOptions::new(&workspace).mount_at("/work"))),
+            vm: Arc::new(vm(&root)), workspace, log_file: None, idle: Some(Duration::from_secs(5)), all_in_vm: false, workspace_path: Some("/work".into()),
+        })
+    }
+
+    /// Stop the VM if one is up and delete the workspace.
+    pub async fn close(self) -> Result<()> {
+        self.stop().await?;
+        if let Some(root) = self.c.o.workspace.parent() {
+            std::fs::remove_dir_all(root)?;
+        }
+        Ok(())
     }
 
     pub fn vm(&self) -> &Arc<dyn VmBackend> {
