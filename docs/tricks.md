@@ -59,21 +59,23 @@ Claude Code's root is a 256 GiB ext4 mounted with `discard`, and only about 30 G
 for a uid (`resv_strict`, `resuid=65534`), which is a way to sell a big disk and commit a small one (observed, my reading). Not
 relevant to the memory and CPU limits here.
 
-## Skipping mitigations that protect against attacks the kernel cannot suffer
+## Mitigations scoped to the boundaries that exist
 
-Claude Code's `mitigations=auto,no_guest_host,no_guest_guest` is in mainline Linux: the attack vector controls added in 6.17 let a
-kernel say which boundaries it needs protecting, and the kernel documentation's own example is `mitigations=auto,nosmt,no_guest_host,no_guest_guest`.
-The four vectors are user to kernel, user to user, guest to host and guest to guest. The last two only do anything in a kernel that
-runs VMs, and by default they are on when KVM is compiled in. Claude Code's guest kernel has KVM compiled in (and nested virtualization
-switched off), so on `auto` it would pay for protections against VMs it never runs. The two settings turn those off and keep the other two,
-which protect the guest's kernel and its agent from the code the agent runs. Protection against other tenants comes from the host kernel
-running Firecracker, which keeps its own guest vectors on. This is the kernel documentation plus a reasonable reading of it, not something
-Anthropic has said.
+Claude Code boots with `mitigations=auto,no_guest_host,no_guest_guest`. That is mainline syntax, attack vector controls since
+Linux 6.17 (`Documentation/admin-guide/hw-vuln/attack_vector_controls.rst`): `auto` turns on what the CPU needs, and the two `no_`
+vectors drop the protections a kernel arms for VMs it hosts. Its guest kernel has KVM built in (the `kvm_pvm` line in dmesg), so
+without them it would arm those protections for VMs it never runs. It keeps `user_kernel` and `user_user`, which guard the kernel
+and the harness from the code the agent runs. Tenants are kept apart by the host, whose own guest mitigations nothing in a guest
+can turn off (observed, plus the upstream document).
 
-The same logic applies here with one limit. On the host, every vector stays on: the file-only tier runs tenant commands as host processes,
-so user to kernel and user to user matter, and the VMs are hostile to each other, so the guest vectors matter too. Inside a guest, everything belongs to one tenant, so
-a blanket `mitigations=off` would cost no other tenant anything. Our guest kernel is 6.1.128, which predates the vector syntax, so it is all or nothing.
-Not tried here.
+Not worth testing here. The 6.1.128 guest kernel predates the vector syntax, so the equivalent is `mitigations=off`, and the
+i3-1115G4 is not affected by the expensive bugs (Meltdown, MDS, L1TF and Retbleed all read `Not affected`), so it would save a few
+percent of guest CPU where the released designs stop on disk wait. A restored VM also keeps the boot arguments of the template,
+so it would need the snapshot rebuilt.
+
+The host matters more. Ubuntu builds 7.0.0-38-generic without `CONFIG_MITIGATION_GDS`, so Downfall reads `Vulnerable` although the
+microcode (0xbe) supports the fix, and a hostile tenant could read another's data on the same core. `gather_data_sampling=force` on
+the host command line turns the microcode mitigation on. Its cost falls on AVX gather instructions.
 
 ## Tried since: keep /tmp as files on the host
 
