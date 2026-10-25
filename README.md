@@ -62,15 +62,77 @@ opencode                      # the agent now works in /work, in the sandbox, an
 
 The `tools` block turns off opencode's own tools, so every command and every file edit goes through the sandbox. Files the agent writes appear in your project directory; anything it installs or runs stays inside.
 
-**5. Start a lot of sandboxes.** The same job as the usual E2B example, a hundred sandboxes at once, each writing a file and reading it back, is `examples/hundred.rs`:
+**5. Start a lot of sandboxes.** The usual way to show a sandbox API is to start a hundred at once, each writing a file and reading it back. Here is that job in sandroute (`examples/hundred.rs`):
 
-```sh
-target/release/examples/hundred 100        # 0.8 s and 23 MiB: the read is a file command, so no VM
-target/release/examples/hundred 100 vm     # 2.0 s and 242 MiB: the read runs in a microVM
-target/release/examples/hundred 700 vm     # 18.5 s and 3.1 GiB: 700 microVMs on a 7 GiB laptop
+```rust
+async fn run_single_sandbox(idx: usize) -> anyhow::Result<()> {
+    // Create an isolated sandbox
+    let sandbox = Sandroute::create().await?;
+    let random = format!("{idx}-{:x}", SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos());
+
+    // Write a file inside the sandbox
+    sandbox.write_file("random.txt", &random).await?;
+
+    // Read it back with a command
+    let res = sandbox.run("cat random.txt", None).await?;
+    println!("Sandbox {idx}: {}", res.stdout.trim());
+    sandbox.close().await
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Spin up the sandboxes simultaneously
+    let tasks: Vec<_> = (0..100).map(|i| tokio::spawn(run_single_sandbox(i))).collect();
+    for t in tasks { t.await??; }
+    Ok(())
+}
 ```
 
-To compare against another local microVM runtime, `uv run bench/compare/microsandbox_hundred.py 100` does the same job with [microsandbox](https://github.com/superradcompany/microsandbox). It uses 4.6 GiB for 100 sandboxes, and at 130 at once the machine runs out of memory. Here are both, started 130 at once on the same laptop:
+And the same job in [microsandbox](https://github.com/superradcompany/microsandbox), another local microVM runtime (`bench/compare/microsandbox_hundred.py`), which starts a microVM per sandbox:
+
+```python
+async def run_single_sandbox(idx: int):
+    # Spin up an isolated microVM asynchronously
+    name = f"bench-{idx}-{uuid.uuid4().hex[:6]}"
+    sandbox = await Sandbox.create(name, image="python", cpus=1, memory=256)
+    try:
+        random_str = uuid.uuid4().hex
+
+        # Write file inside sandbox
+        await sandbox.fs.write("/tmp/random.txt", random_str.encode())
+
+        # Read or verify back
+        res = await sandbox.exec("cat", ["/tmp/random.txt"])
+        print(f"Sandbox {idx} ({name}): {res.stdout_text.strip()}")
+    finally:
+        await sandbox.stop_and_wait()
+        await Sandbox.remove(name)
+
+async def main():
+    # Spin up 100 sandboxes simultaneously
+    await asyncio.gather(*[run_single_sandbox(i) for i in range(100)])
+```
+
+Run them yourself:
+
+```sh
+target/release/examples/hundred 100        # sandroute: the read is a file command, so it runs in the light sandbox
+target/release/examples/hundred 100 vm     # sandroute: the read runs in a microVM (python3 instead of cat)
+target/release/examples/hundred 700 vm     # sandroute: 700 microVMs
+uv run bench/compare/microsandbox_hundred.py 100    # microsandbox
+```
+
+On a 7 GiB laptop:
+
+| | sandboxes | the read runs in | time | host memory used |
+|---|---|---|---|---|
+| sandroute | 100 | the light sandbox (`cat`) | 0.8 s | 23 MiB |
+| sandroute | 100 | a microVM (`python3`) | 2.0 s | 242 MiB |
+| microsandbox | 100 | a microVM (`cat`) | 8.6 s | 4.6 GiB |
+| sandroute | 700 | a microVM (`python3`) | 18.5 s | 3.1 GiB |
+| microsandbox | 130 | a microVM (`cat`) | out of memory, stopped | |
+
+Past a hundred the difference shows. Both started with 130 sandboxes at once, recorded side by side:
 
 [![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.gif)](docs/videos/exhaustion-130.mp4)
 
