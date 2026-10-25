@@ -100,6 +100,26 @@ time the same call takes with nothing else going on, found once by calibration. 
 was dominated by commands that sleep, which take the same time under every design, so it measured the
 commands and not the sandbox.
 
+## Final run
+
+Taken on an idle machine with `bench/final/run.sh`, two seeds per tenant count, six minutes a run. A design holds N tenants if both seeds passed at N (p99 added latency under 1.5 s, no errors, no out-of-memory abort). The limit lies between the highest count that passed and the next one tried. Raw results are in `bench/results/final/`.
+
+| design | holds | next count tried | what runs out |
+|---|---|---|---|
+| oxroute, 30 s window | 736 | 768 missed on both seeds | cpu |
+| suspend, 5 s window | 640 | 704 missed on both | cpu |
+| kept, restored from the shared snapshot | 176 | 192 ran out of memory on both | memory |
+| gvisor-cold | 80 (112 passed on one of two) | 112 | cpu |
+| fc-claude, kill idle and cold boot | 64 | 96 ran out of memory on both | memory |
+| fc-vanilla, cold booted, kept up | 48 | 64 ran out of memory on both | memory |
+| kata, reporting on, 256 MiB | 40 | 56 ran out of memory on both | memory |
+| kata-vanilla, shipped defaults | under 32 (one of two seeds passed at 32) | | memory |
+| ch-muse, Cloud Hypervisor 2 vCPU 8 GiB | 16 | 32 ran out of memory on both | memory |
+
+Not rerun in the final: gvisor kept up, kata-cold, the balloon variants, fc-instinct and the Cloud Hypervisor snapshot designs. Their earlier rough numbers below stand as rough.
+
+The first attempt at the final run measured a regression in the Rust port, not the designs: the guest agent had been a Python program, which kept Python warm in the pristine snapshot's page cache, and the static Rust agent did not. Restored VMs read Python from disk on their first command, and oxroute at 560 tenants went from a p99 of 0.5 s to 4.6 s. The init script now warms the interpreter before the snapshot (docs/tricks.md), and the Firecracker and Cloud Hypervisor series above are from after that fix. The pod series did not use that image and were run after clearing stale containerd processes.
+
 ## Results
 
 At the same number of tenants and the same 30 second window, `oxroute` keeps far fewer VMs resident.
