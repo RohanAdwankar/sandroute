@@ -19,6 +19,24 @@ Most agent shell calls are `sed`, `grep`, `cat` and file edits. Those run in a l
 - `guest-agent/`: the static musl agent inside the VM. `scripts/build-rootfs.sh` builds the image; `scripts/net-setup.sh` creates the tap device (needs root once).
 - `src/bin/tenants.rs`: the capacity benchmark. `src/bin/tiers.rs`: the cost of one command in each tier. `src/bin/report.rs`: a table of `bench/results`.
 
+## Try it
+
+Build the VM image once (`scripts/build-rootfs.sh`, which needs Firecracker and a kernel in `~/fcassets`, or `$SANDROUTE_ASSETS`), then:
+
+```rust
+let sandbox = Sandroute::create().await?;
+sandbox.write_file("random.txt", "hello").await?;
+let res = sandbox.run("cat random.txt", None).await?;   // res.stdout, res.exit_code, res.tier
+sandbox.close().await?;
+```
+
+`examples/hundred.rs` does that for a hundred sandboxes at once, the same job as the usual E2B example:
+
+    cargo run --release --example hundred 100       # 0.8 s and 23 MiB on a 7 GiB laptop
+    cargo run --release --example hundred 700 vm    # 18.5 s and 3.1 GiB with every read in a microVM
+
+Commands that only touch files run in the light sandbox, so the first run starts no VM at all; `vm` reads the file with `python3`, which does.
+
 ## Test
 
     cargo test
