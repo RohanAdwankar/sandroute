@@ -28,14 +28,14 @@ trap clean EXIT
 
 # ---- a quiet machine, and a record of it ----
 for i in $(seq 90); do awk '{exit !($1 < 0.3)}' /proc/loadavg && break; sleep 10; done
-awk '{exit !($1 < 0.3)}' /proc/loadavg || { echo "load stayed above 0.3 for 15 minutes; something else is running:"; ps -eo pcpu,rss,args --sort=-pcpu | head -8; exit 1; }
+awk '{exit !($1 < 0.3)}' /proc/loadavg || { echo "load stayed above 0.3 for 15 minutes; something else is running:"; ps -eo pcpu,rss,comm --sort=-pcpu | head -8; exit 1; }
 clean
 {
   date -Is; uname -a; grep -m1 'model name' /proc/cpuinfo; echo "cores: $(nproc)"; grep -E 'MemTotal|MemAvailable|SwapTotal' /proc/meminfo
   echo "load: $(cat /proc/loadavg)"; echo "git: $(git rev-parse HEAD) $(git status --short | wc -l) uncommitted files"; echo "rustc: $(rustc --version)"
   ~/fcassets/firecracker --version | head -1; ls "$HOME/kata/root/opt/kata/bin/" >/dev/null && "$HOME/kata/root/opt/kata/bin/kata-runtime" --version 2>&1 | head -1
   "$HOME/gvisor/runsc" --version 2>&1 | head -1; "$HOME/kata/nerd/bin/containerd" --version
-  echo "--- processes using cpu at the start"; ps -eo pcpu,rss,args --sort=-pcpu | head -8
+  echo "--- processes using cpu at the start"; ps -eo pcpu,rss,comm --sort=-pcpu | head -8
 } > "$OUT/environment.txt"
 cp "$HOME"/kata/final/*.toml "$HOME"/kata/final/crictl.yaml "$HOME"/kata/final/cni.d/* "$OUT/configs/"
 cp src/bin/tenants.rs src/cri.rs bench/final/run.sh "$OUT/configs/"

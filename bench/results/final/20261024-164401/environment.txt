@@ -16,8 +16,5 @@ containerd github.com/containerd/containerd/v2 v2.4.1 f2551031d7276a770f65f98c9b
 %CPU   RSS COMMAND
  0.5     0 [kswapd0]
  0.5 44396 /home/rohan/kata/nerd/bin/containerd --config /home/rohan/kata/final/containerd.toml
- 0.5 221232 claude -p --input-format stream-json --output-format stream-json --verbose --permission-mode bypassPermissions --resume 223854b7-1424-48e9-bf8d-d1099f273b75 --model claude-sonnet-5-5
  0.3     0 [kworker/u16:3-flush-252:0]
  0.2     0 [kworker/u16:0-flush-252:0]
- 0.2     0 [claude] <defunct>
- 0.2     0 [claude] <defunct>
