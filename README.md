@@ -1,8 +1,8 @@
 # sandroute
 
-[![736 tenants on a 7 GiB laptop](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
+[![736 tenants on a 7 GiB laptop](docs/videos/timelapse-736.gif)](docs/videos/timelapse-736.mp4)
 
-*736 agent tenants on one 7 GiB laptop, replayed from real sessions at 8x. Each tile is a sandbox, blue ran in the light sandbox and orange in a microVM.*
+*736 agent tenants on one 7 GiB laptop, replayed from real sessions at 8x. Each tile is a sandbox, blue ran in the light sandbox and orange in a microVM. Click for the full-quality video.*
 
 Sandroute is a sandbox for AI coding agents that serves many more tenants per machine than a microVM each. Commands that only touch files run in a locked-down light sandbox, and anything else runs in a Firecracker microVM that is restored from one shared snapshot, started only when a command needs it, and thrown away when it goes idle. On a 7 GiB laptop that holds 736 mostly idle agent tenants, where a plain microVM per tenant holds 48.
 
@@ -72,7 +72,7 @@ target/release/examples/hundred 700 vm     # 18.5 s and 3.1 GiB: 700 microVMs on
 
 To compare against another local microVM runtime, `uv run bench/compare/microsandbox_hundred.py 100` does the same job with [microsandbox](https://github.com/superradcompany/microsandbox). It uses 4.6 GiB for 100 sandboxes, and at 130 at once the machine runs out of memory. Here are both, started 130 at once on the same laptop:
 
-[![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
+[![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.gif)](docs/videos/exhaustion-130.mp4)
 
 *Microsandbox boots all 130 microVMs together, memory climbs to the limit before most have finished, and the run is stopped with 34 done. Sandroute finishes all 130 in 3.4 s.*
 
