@@ -50,6 +50,9 @@ struct Rec {
     woke: bool,
     err: Option<String>,
     at: u64,
+    at_ms: u64,
+    label: String,
+    out: String,
     own_ms: u64,
 }
 
@@ -140,20 +143,30 @@ fn sandbox_for(c: &Cfg, i: usize, ws: &Path) -> Result<Sandroute> {
     Sandroute::new(SandrouteOptions { workspace: ws.to_path_buf(), vm, log_file: None, idle, all_in_vm, light, workspace_path: Some("/work".into()) })
 }
 
-async fn perform(c: &Cfg, s: &Sandroute, call: &Call) -> Result<String> {
+/// Runs one recorded call and returns where it ran, a short description of it, and the start of what it printed.
+async fn perform(c: &Cfg, s: &Sandroute, call: &Call) -> Result<(String, String, String)> {
     let a = &call.args;
     let st = |k: &str| a.get(k).and_then(Value::as_str);
     let num = |k: &str| a.get(k).and_then(Value::as_u64).map(|n| n as usize);
+    let mut out = String::new();
     match call.tool.as_str() {
-        "bash" => return Ok(s.run(st("command").unwrap_or(""), st("workdir")).await?.tier.as_str().to_string()),
-        "read" => drop(s.read_file(st("filePath").unwrap_or(""), num("offset"), num("limit")).await?),
+        "bash" => {
+            let r = s.run(st("command").unwrap_or(""), st("workdir")).await?;
+            return Ok((r.tier.as_str().to_string(), st("command").unwrap_or("").to_string(), head(&r.stdout)));
+        }
+        "read" => out = head(&s.read_file(st("filePath").unwrap_or(""), num("offset"), num("limit")).await?),
         "write" => s.write_file(st("filePath").unwrap_or(""), st("content").unwrap_or("")).await?,
         "edit" => drop(s.edit_file(st("filePath").unwrap_or(""), st("oldString").unwrap_or(""), st("newString").unwrap_or(""), a.get("replaceAll").and_then(Value::as_bool).unwrap_or(false)).await?),
         "glob" => drop(s.glob(st("pattern").unwrap_or(""), st("path")).await?),
         "grep" => drop(s.grep_files(st("pattern").unwrap_or(""), st("path"), st("include")).await?),
         t => anyhow::bail!("unknown tool {t}"),
     }
-    Ok(if c.design == "oxroute" { "inprocess" } else { "vm" }.to_string())
+    let label = format!("{} {}", call.tool, st("filePath").or(st("pattern")).unwrap_or(""));
+    Ok((if c.design == "oxroute" { "inprocess" } else { "vm" }.to_string(), label, out))
+}
+
+fn head(s: &str) -> String {
+    s.lines().take(2).collect::<Vec<_>>().join("\n").chars().take(160).collect()
 }
 
 fn pct(xs: &[u64], p: f64) -> u64 {
@@ -274,6 +287,7 @@ struct Ctx {
     active: AtomicI64,
     stopping: AtomicBool,
     started: Mutex<Instant>,
+    events: Mutex<Vec<Value>>,
 }
 
 impl Ctx {
@@ -309,20 +323,22 @@ async fn tenant(ctx: Arc<Ctx>, i: usize, s: Sandroute, end_at: Instant, ws: Path
             tokio::time::sleep(Duration::from_millis(call.think_ms.unwrap_or_else(|| Ctx::median_think(t)).clamp(200, 60000))).await; // the model thinking
             let boots = s.boot_count();
             let a = Instant::now();
-            let (mut tier, mut err) = ("?".to_string(), None);
+            let (mut tier, mut label, mut out, mut err) = ("?".to_string(), String::new(), String::new(), None);
             match tokio::time::timeout(Duration::from_secs(60), perform(&ctx.cfg, &s, &call)).await {
-                Ok(Ok(x)) => tier = x,
+                Ok(Ok(x)) => (tier, label, out) = x,
                 Ok(Err(e)) => err = Some(e.to_string().lines().next().unwrap_or("").chars().take(100).collect()),
                 Err(_) => err = Some("timed out after 60s".into()),
             }
             let started = *ctx.started.lock().unwrap();
             ctx.recs.lock().unwrap().push(Rec { tenant: i, tool: call.tool.clone(), tier, ms: a.elapsed().as_millis() as u64, woke: s.boot_count() > boots, err,
-                at: a.duration_since(started).as_secs(), own_ms: *ctx.intrinsic.get(&format!("{}#{}", t.id, call.idx)).unwrap_or(&0) });
+                at: a.duration_since(started).as_secs(), at_ms: a.duration_since(started).as_millis() as u64, label, out, own_ms: *ctx.intrinsic.get(&format!("{}#{}", t.id, call.idx)).unwrap_or(&0) });
         }
         ctx.active.fetch_sub(1, Ordering::Relaxed);
         if ctx.cfg.hint_end {
             let _ = s.release().await;
         }
+        let begun = t0.duration_since(*ctx.started.lock().unwrap()).as_millis() as u64;
+        ctx.events.lock().unwrap().push(json!({"ev": "turn", "tenant": i, "start_ms": begun, "end_ms": begun + t0.elapsed().as_millis() as u64, "task": t.id}));
         ctx.turns.lock().unwrap().push(t0.elapsed().as_millis() as u64);
         until(ctx.away_sec() * 1000.0).await; // the person is away
     }
@@ -388,7 +404,7 @@ async fn main() -> Result<()> {
             futures_join(chunk.iter().cloned().map(|s| async move { let _ = s.run("true", None).await; })).await;
         }
     }
-    let ctx = Arc::new(Ctx { cfg, rng: Rng(Mutex::new(arg("--seed", "1").parse()?)), traces, intrinsic, recs: Default::default(), turns: Default::default(), active: AtomicI64::new(0), stopping: AtomicBool::new(false), started: Mutex::new(Instant::now()) });
+    let ctx = Arc::new(Ctx { cfg, rng: Rng(Mutex::new(arg("--seed", "1").parse()?)), traces, intrinsic, recs: Default::default(), turns: Default::default(), active: AtomicI64::new(0), stopping: AtomicBool::new(false), started: Mutex::new(Instant::now()), events: Default::default() });
     let c = &ctx.cfg;
 
     if flag("--calibrate") {
@@ -417,7 +433,7 @@ async fn main() -> Result<()> {
     let samples: Arc<Mutex<Vec<Value>>> = Default::default();
     let aborted: Arc<Mutex<Option<String>>> = Default::default();
     let sampler = {
-        let (ctx, samples, aborted) = (ctx.clone(), samples.clone(), aborted.clone());
+        let (ctx, samples, aborted, sbs) = (ctx.clone(), samples.clone(), aborted.clone(), sbs.clone());
         tokio::spawn(async move {
             let prev = Arc::new(Mutex::new(Prev::default()));
             loop {
@@ -425,6 +441,11 @@ async fn main() -> Result<()> {
                 let (ctx2, prev2, active) = (ctx.clone(), prev.clone(), ctx.active.load(Ordering::Relaxed));
                 let row = tokio::task::spawn_blocking(move || sample(&ctx2.cfg, &mut prev2.lock().unwrap(), started, active)).await.unwrap();
                 let (free, disk) = (row["memAvailMiB"].as_f64().unwrap_or(0.0), row["diskFreeGiB"].as_f64().unwrap_or(f64::MAX));
+                if flag("--events") {
+                    // which tenants hold a VM right now: it was woken more often than it was released
+                    let up: Vec<usize> = sbs.iter().enumerate().filter(|(_, s)| s.boot_count() > s.release_count()).map(|(i, _)| i).collect();
+                    ctx.events.lock().unwrap().push(json!({"ev": "vm", "t_ms": started.elapsed().as_millis() as u64, "up": up}));
+                }
                 samples.lock().unwrap().push(row);
                 let mut ab = aborted.lock().unwrap();
                 if ab.is_none() && (free < 300.0 || disk < 6.0) {
@@ -481,6 +502,14 @@ async fn main() -> Result<()> {
         "cpuSeconds": {"harnessUser": own.0, "harnessSystem": own.1, "childrenUser": kids.0, "childrenSystem": kids.1},
         "leakedMicroVMs": leftover, "slo": {"p99Ms": c.slo_p99, "met": met},
     });
+    if flag("--events") {
+        let mut lines = vec![json!({"ev": "meta", "design": c.design, "tenants": c.n, "minutes": c.minutes, "seed": c.seed, "windowMs": c.window.as_millis() as u64})];
+        lines.extend(recs.iter().map(|r| json!({"ev": "call", "tenant": r.tenant, "t_ms": r.at_ms, "ms": r.ms, "tool": r.tool, "tier": r.tier, "woke": r.woke, "cmd": r.label, "out": r.out, "err": r.err})));
+        lines.extend(ctx.events.lock().unwrap().iter().cloned());
+        lines.extend(samples.iter().map(|s| json!({"ev": "sample", "sample": s})));
+        std::fs::create_dir_all(&out_dir)?;
+        std::fs::write(out_dir.join(format!("{}.events.jsonl", arg("--name", "run"))), lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n"))?;
+    }
     let default_name = format!("{}{}-n{}-w{}-i{}-s{}", c.design, if c.balloon { "-balloon" } else { "" }, c.n, c.window.as_millis(), c.idle_mean, c.seed);
     let name = arg("--name", &default_name);
     std::fs::create_dir_all(&out_dir)?;
