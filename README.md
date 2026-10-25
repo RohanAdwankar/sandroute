@@ -21,12 +21,12 @@ sudo usermod -aG kvm $USER                                              # access
 **2. Get sandroute and build it.** `scripts/setup.sh` downloads Firecracker and a guest kernel and builds the VM image into `~/fcassets` (set `SANDROUTE_ASSETS` to put it elsewhere).
 
 ```sh
-git clone https://github.com/rohox/sandroute && cd sandroute
+git clone https://github.com/RohanAdwankar/sandroute && cd sandroute
 scripts/setup.sh
 cargo build --release --examples --bins
 ```
 
-**3. Start a sandbox from code.** This is `examples/quickstart.rs`; run it with `target/release/examples/quickstart`, or use sandroute from your own project with `sandroute = { git = "https://github.com/rohox/sandroute" }`, `tokio` (features `full`) and `anyhow`.
+**3. Start a sandbox from code.** This is `examples/quickstart.rs`; run it with `target/release/examples/quickstart`, or use sandroute from your own project with `sandroute = { git = "https://github.com/RohanAdwankar/sandroute" }`, `tokio` (features `full`) and `anyhow`.
 
 ```rust
 use sandroute::Sandroute;
