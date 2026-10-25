@@ -100,6 +100,26 @@ time the same call takes with nothing else going on, found once by calibration. 
 was dominated by commands that sleep, which take the same time under every design, so it measured the
 commands and not the sandbox.
 
+## Final run
+
+Taken on an idle machine with `bench/final/run.sh`, two seeds per tenant count, six minutes a run. A design holds N tenants if both seeds passed at N (p99 added latency under 1.5 s, no errors, no out-of-memory abort). The limit lies between the highest count that passed and the next one tried. Raw results are in `bench/results/final/`.
+
+| design | holds | next count tried | what runs out |
+|---|---|---|---|
+| oxroute, 30 s window | 736 | 768 missed on both seeds | cpu |
+| suspend, 5 s window | 640 | 704 missed on both | cpu |
+| kept, restored from the shared snapshot | 176 | 192 ran out of memory on both | memory |
+| gvisor-cold | 80 (112 passed on one of two) | 112 | cpu |
+| fc-claude, kill idle and cold boot | 64 | 96 ran out of memory on both | memory |
+| fc-vanilla, cold booted, kept up | 48 | 64 ran out of memory on both | memory |
+| kata, reporting on, 256 MiB | 40 | 56 ran out of memory on both | memory |
+| kata-vanilla, shipped defaults | under 32 (one of two seeds passed at 32) | | memory |
+| ch-muse, Cloud Hypervisor 2 vCPU 8 GiB | 16 | 32 ran out of memory on both | memory |
+
+Not rerun in the final: gvisor kept up, kata-cold, the balloon variants, fc-instinct and the Cloud Hypervisor snapshot designs. Their earlier rough numbers below stand as rough.
+
+The first attempt at the final run measured a regression in the Rust port, not the designs: the guest agent had been a Python program, which kept Python warm in the pristine snapshot's page cache, and the static Rust agent did not. Restored VMs read Python from disk on their first command, and oxroute at 560 tenants went from a p99 of 0.5 s to 4.6 s. The init script now warms the interpreter before the snapshot (docs/tricks.md), and the Firecracker and Cloud Hypervisor series above are from after that fix. The pod series did not use that image and were run after clearing stale containerd processes.
+
 ## Results
 
 At the same number of tenants and the same 30 second window, `oxroute` keeps far fewer VMs resident.
@@ -251,7 +271,7 @@ running code in a cheaper middle tier than a VM.
 
 ## Setting the same VMMs up the way the products do
 
-`bench/tenants.mts` takes `--vmm cloud-hypervisor` (a backend in `src/cloud-hypervisor.ts`, a subclass of the Firecracker one),
+`tenants` takes `--vmm cloud-hypervisor` (a mode of `src/vmm.rs`),
 `--vcpus`, `--mem`, `--balloon` and `--no-snapshot` (cold boot every VM), and the designs `reclaim` (kill an idle VM, cold boot the
 next) and the existing `kept` and `suspend`. That is enough to express the setups the earlier posts describe: Claude Code reclaims
 an idle VM and keeps its disk, Instinct (E2B) is 2 vCPU and 1.9 GB with snapshot resume, and Muse is Cloud Hypervisor at 2 vCPU and
@@ -262,6 +282,59 @@ same root image and the same guest agent. Its snapshot is a directory, and `memo
 as Firecracker does: two VMs restored from one snapshot held 14 MiB each. A VM restored from a shared snapshot costs far less than one
 cold booted. Eight tenants, idle: about 37 MiB each restored under Firecracker and 52 under Cloud Hypervisor, against about 123 and 167
 cold booted. These footprints are from smoke tests, not the final run.
+
+### Where the time goes at oxroute's limit, and why so many guests hold state
+
+Profiling one 576-tenant run (mean over the run, 4 hardware threads): 6% user, 19% system, 16% inside the VMs, 18% waiting on disk
+and 41% idle. In the busiest third of the samples (above 85% busy) disk wait is 34%, system 26%, guest 24% and user 7%. The kernel's
+pressure counters say tasks were stalled on I/O 28% of the time on average (83% at the worst moment) and on memory 12% (49% at worst).
+So at the limit the machine is waiting on disk and short of memory more than it is short of CPU, and the harness process itself spends
+more time in the kernel (1430 against 607 percent-seconds of user time) than in its own code.
+
+Most of that disk work is one cause. Replaying each recorded session once through a single oxroute tenant and asking the guest what it
+holds that the workspace does not: 1 of the 18 sessions that touch a VM leaves anything, one scratch file in `/tmp`. A guest with any
+such file cannot be thrown away, so every later release of that tenant writes a full 256 MiB memory snapshot, and that tenant stays that way
+for the run. With 576 tenants picking sessions at random, about 11% hit that session at least once, which is about 65 tenants and about 16 GiB,
+the 15 to 18 GiB of snapshots seen at the limit. A scratch file is cheap to keep as a file. Keeping it as a memory snapshot is the expensive way.
+
+What changed. The guest's `/tmp` is now kept on the host the way the workspace is: the guest agent syncs it as a second area, the host holds
+the files while the guest is released, and a new task clears them. A guest that wrote only to `/tmp` holds no state, so it is thrown away on release and
+restored from the shared snapshot, which writes nothing. Memory snapshots are left for what only the guest has, such as installed packages.
+Replaying oxroute at 576 tenants, same seed, same machine, the same day: before, five runs had p99 of 2.8, 3.3, 4.0, 4.3 and 4.5 s and 15 to 18 GiB
+of snapshots on disk; after, p99 1.19 s, p95 374 ms against 700 to 1100, and no snapshots at all. The limit moved but did not vanish: 640 tenants
+missed twice (p99 1.6 and 2.9 s), 672 and 704 missed worse, all with the cpu at 98%. What is left at the limit is cpu, as the profile suggested once the
+disk wait was gone. The machine was slower this day than the earlier ones, when 576 passed under the old code, so the ratio of the two
+(about three times lower p99 at 576) is the figure to trust, and the final run on an idle machine will give the absolute limit.
+
+### Would a Rust port help?
+
+Not as a port of the control plane, as far as these runs go, but one piece of it matters a great deal. At 576 tenants the harness process used 161 of the
+910 cpu-seconds the machine spent, 50 of them in JavaScript. A V8 profile of it shows the main thread idle 63% of the time, with `spawn` at 17% and
+`readFileSync` at 10%, and the harness's own logic around 2%. There is little JavaScript to speed up.
+
+`spawn` is the finding. Node starts a process with fork(), which copies the page tables of the whole parent, so the price of every launch grows with how
+much Node holds: 0.5 ms of cpu at 64 MiB, 5.8 ms at 390 MiB and 12.7 ms at 860 MiB, against about 0.25 ms and no measurable cpu in a Rust process at any of those
+sizes, which uses posix_spawn. A control plane serving hundreds of tenants holds hundreds of MiB, and each light command pays that. The orchestrator is now Rust and
+starts the sandboxed commands with posix_spawn (`src/spawn.rs`), so the cost no longer depends on its size. When it was Node, a helper process did this: a command
+cost 6.9 ms and about 0.3 ms of Node cpu whatever Node's size, where Node's own spawn took 18 ms at 320 MiB and 30 ms at 800 MiB.
+
+On the same workload, oxroute used 656 cpu-seconds for 17,450 calls before (37.6 ms a call) and 560 for 19,340 calls with it (29 ms a call), 23% less per
+call, with the harness's own system time down from 111 s to 64 s. At 640 tenants p99 went from 1.6 and 2.9 s to 0.9 and 2.3 s on two seeds, so the limit moved
+up a little but not past 704, which still missed (5.1 s). All 64 tests pass through the helper, including the escape probes and the replay of every recorded command.
+
+### A harness that tells the sandbox what it knows
+
+An agent harness knows two things the sandbox only guesses at: that a turn has ended (the person is away, for minutes) and that one is about to start.
+`Sandroute.release()` already existed; `prewarm()` is new. Replaying oxroute at 640 tenants, two seeds each, with the harness sending one signal at a time:
+
+At the end of a turn it releases the VM at once, where the idle timer would wait 30 seconds. Mean resident VMs went from 150 to about 80, the lowest free memory
+from 0.9 to 1.5 GB up to 3.5 to 3.7 GB, and the number of wakes did not change (1519 to 1526 and 1520 to 1475), because the next command is minutes away either way. p99
+was 1.07 and 1.56 s against 0.91 and 2.27 s without it, which is within what these runs vary, and the cpu spent was the same. So the signal halves the memory the VMs hold
+and costs nothing, but it does not raise the limit here, since the limit is cpu. It matters wherever memory is the limit instead, which is a bigger guest or a host with less room.
+
+At the start of a turn it wakes the VM while the model is still thinking, so the first command does not wait. Without knowing which turns need a VM, this made things worse:
+wakes rose from 1520 to 2200, cpu spent rose by about 20%, and p99 was 1.9 and 3.1 s. About a third of the recorded sessions never touch a VM, so a blind wake is wasted
+work and the cpu is what is short. It would need a prediction of which turns will want one, such as the kind of task or the last turn's behaviour, and none was tried.
 
 ### What the Claude Code box showed
 
@@ -277,6 +350,25 @@ memory snapshots. Tried here, at 576 tenants with every other setting the same, 
 (CPU-bound, p99 4.3 s that day) and the cold boot variant ran out of memory with 78 VMs resident. A VM cold booted costs about
 123 MiB against about 37 for one restored from the shared snapshot, so what is saved in snapshot writes is lost in memory.
 Cold booting suits a host with room to spare, as Claude Code's evidently is, and not a 7 GiB laptop.
+
+## What one command costs in each tier
+
+The same command, run 60 times in each place, in a project of 300 small files (`src/bin/tiers.rs`; medians, with 95th percentiles for the slowest of the three):
+
+| command | host, nothing around it | light sandbox | Firecracker, warm |
+|---|---|---|---|
+| `ls` | 4.7 ms | 6.5 ms | 11.6 ms (p95 22.6) |
+| `cat` a file | 4.5 ms | 6.2 ms | 11.3 ms |
+| `grep -rn` over 300 files | 5.0 ms | 7.2 ms | 13.4 ms (p95 27.1) |
+| `find` and sort | 6.0 ms | 7.5 ms | 14.3 ms |
+| `python3` start | 12.5 ms | 13.9 ms | 18.0 ms |
+| `python3`, 85 ms of cpu | 84.0 ms | 85.7 ms | 89.7 ms |
+
+The light sandbox adds about 1.7 ms to a command: bubblewrap building the namespaces and the seccomp program. A warm VM adds about 6 to 7 ms, which is the vsock round trip plus
+the sync (the host walks the workspace and reports changes before the command, and the guest reports back after it) and shows in the p95 when a sync has something to carry. The
+compute inside the VM is close to native: 85 ms of cpu took 89.7 ms, about 5% more. So the VM's cost is the fixed price of getting a command in and out, a few milliseconds, which is
+why a command that only reads files is worth keeping out of it. A wake, meaning a released VM restored from the shared snapshot and then running one command through the whole
+path, takes about 95 ms (p95 102). One run on this machine, with nothing else on it; the final run on an idle machine may differ a little.
 
 ## Compared with the sandboxes in the earlier posts
 
@@ -343,9 +435,11 @@ snapshot, and the read tool failing on a directory.
 ## Reproducing it
 
     scripts/build-rootfs.sh
-    npx tsx bench/collect.mts                 # record sessions, needs opencode and its free tier
-    npx tsx bench/tenants.mts --calibrate --design kept --tenants 1
-    npx tsx bench/tenants.mts --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
-    npx tsx bench/tenants.mts --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/cri-vm.mts
-    CRI_CONFIG=... CRI_RUNTIME=runsc npx tsx bench/tenants.mts --design gvisor --tenants 192 --minutes 6 --idle-mean 120
-    npx tsx bench/report.mts
+    cargo build --release --bins
+    target/release/tenants --calibrate --design kept --tenants 1
+    target/release/tenants --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
+    target/release/tenants --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/final/setup-cri.sh
+    CRI_CONFIG=... CRI_RUNTIME=runsc target/release/tenants --design gvisor --tenants 192 --minutes 6 --idle-mean 120
+    target/release/report
+
+The recorded sessions in `bench/traces` were captured from opencode runs with a tool wrapper that has since been removed.

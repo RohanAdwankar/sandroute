@@ -1,4 +1,5 @@
-node_modules
-*.log
-.work
 bench/traces/failed/
+*.log
+target
+.work
+bench/results/final.root-stale-*

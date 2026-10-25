@@ -1,0 +1,33 @@
+=== oxroute  (--design oxroute, window 30000ms, idle-mean 120s)
+oxroute-n672-s1                calls 20229  p50 12  p95 94  p99 216ms  VMs peak 277.0 (2842.0 MiB)  disk 0.0 GiB  cpu 37.1%/99.3%  err 0  SLO met
+oxroute-n672-s2                calls 20554  p50 12  p95 100  p99 234ms  VMs peak 264.0 (2880.0 MiB)  disk 0.0 GiB  cpu 36.6%/97.5%  err 0  SLO met
+--- oxroute 672: 2 of 2 seeds met the target
+oxroute-n704-s1                calls 21581  p50 13  p95 120  p99 310ms  VMs peak 281.0 (2934.0 MiB)  disk 0.0 GiB  cpu 40.2%/99.8%  err 0  SLO met
+oxroute-n704-s2                calls 21312  p50 12  p95 112  p99 243ms  VMs peak 274.0 (2729.0 MiB)  disk 0.0 GiB  cpu 39.2%/100.0%  err 0  SLO met
+--- oxroute 704: 2 of 2 seeds met the target
+oxroute-n736-s1                calls 22328  p50 15  p95 277  p99 1015ms  VMs peak 310.0 (3199.0 MiB)  disk 0.0 GiB  cpu 42.6%/100.0%  err 0  SLO met
+oxroute-n736-s2                calls 22450  p50 15  p95 178  p99 552ms  VMs peak 300.0 (3116.0 MiB)  disk 0.0 GiB  cpu 42.5%/100.0%  err 0  SLO met
+--- oxroute 736: 2 of 2 seeds met the target
+=== suspend  (--design suspend, window 5000ms, idle-mean 120s)
+suspend-n576-s1                calls 17511  p50 35  p95 331  p99 847ms  VMs peak 217.0 (1770.0 MiB)  disk 0.0 GiB  cpu 42.2%/100.0%  err 0  SLO met
+suspend-n576-s2                calls 16845  p50 37  p95 330  p99 959ms  VMs peak 206.0 (1861.0 MiB)  disk 0.0 GiB  cpu 41.4%/100.0%  err 0  SLO met
+--- suspend 576: 2 of 2 seeds met the target
+suspend-n640-s1                calls 19353  p50 52  p95 554  p99 1291ms  VMs peak 228.0 (1827.0 MiB)  disk 0.0 GiB  cpu 51.2%/100.0%  err 0  SLO met
+suspend-n640-s2                calls 19526  p50 56  p95 536  p99 1223ms  VMs peak 225.0 (1736.0 MiB)  disk 0.0 GiB  cpu 52.3%/100.0%  err 0  SLO met
+--- suspend 640: 2 of 2 seeds met the target
+suspend-n704-s1                calls 20978  p50 99  p95 1744  p99 3203ms  VMs peak 294.0 (2167.0 MiB)  disk 0.0 GiB  cpu 58.2%/100.0%  err 0  SLO missed
+suspend-n704-s2                calls 20701  p50 119  p95 2380  p99 3985ms  VMs peak 306.0 (2247.0 MiB)  disk 0.0 GiB  cpu 56.6%/100.0%  err 0  SLO missed
+--- suspend 704: 0 of 2 seeds met the target
+--- suspend stops at 704
+=== kept  (--design kept, window 30000ms, idle-mean 120s)
+kept-n160-s1                   calls 4839  p50 5  p95 24  p99 38ms  VMs peak 160.0 (4466.0 MiB)  disk 0.0 GiB  cpu 7.2%/33.8%  err 0  SLO met
+kept-n160-s2                   calls 4683  p50 5  p95 19  p99 28ms  VMs peak 160.0 (4386.0 MiB)  disk 0.0 GiB  cpu 6.8%/22.9%  err 0  SLO met
+--- kept 160: 2 of 2 seeds met the target
+kept-n176-s1                   calls 5346  p50 5  p95 24  p99 36ms  VMs peak 176.0 (4786.0 MiB)  disk 0.0 GiB  cpu 8.1%/29.3%  err 0  SLO met
+kept-n176-s2                   calls 5271  p50 5  p95 22  p99 34ms  VMs peak 176.0 (4920.0 MiB)  disk 0.0 GiB  cpu 7.7%/23.2%  err 0  SLO met
+--- kept 176: 2 of 2 seeds met the target
+kept-n192-s1                   calls 5637  p50 5  p95 23  p99 36ms  VMs peak 192.0 (5174.0 MiB)  disk 0.0 GiB  cpu 9.3%/27.9%  err 0  ABORTED memory: 294 MiB left
+kept-n192-s2                   calls 5489  p50 5  p95 21  p99 33ms  VMs peak 192.0 (5221.0 MiB)  disk 0.0 GiB  cpu 8.8%/28.9%  err 0  ABORTED memory: 289 MiB left
+--- kept 192: 0 of 2 seeds met the target
+--- kept stops at 192
+done; see bench/results/final/20261024-200650/summary.tsv

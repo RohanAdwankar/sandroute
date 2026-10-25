@@ -1,13 +1,14 @@
 #!/bin/bash
 # Build an ext4 rootfs for the sandroute Firecracker backend without root:
 # copy bash/python3/coreutils + their libs out of the host, add an init that
-# starts guest/agent.py, then mke2fs -d (needs no loop mount).
+# starts the guest agent, then mke2fs -d (needs no loop mount). The agent is a static musl binary built from guest-agent/src/main.rs.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 HERE="${SANDROUTE_ASSETS:-$HOME/fcassets}"
 STAGE=$HERE/stage
 IMG=$HERE/rootfs.ext4
-AGENT="$REPO/guest/agent.py"
+(cd "$REPO" && cargo build --release --quiet --target x86_64-unknown-linux-musl -p guest-agent)
+AGENT="$REPO/target/x86_64-unknown-linux-musl/release/guest-agent"
 PYV=$(python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])")
 
 rm -rf "$STAGE"; mkdir -p "$STAGE"/{bin,sbin,usr/bin,usr/lib,usr/sbin,lib,lib64,proc,sys,dev,tmp,etc,root,var/log,overlay,.upper}
@@ -54,7 +55,7 @@ ln -sf /usr/bin/bash "$STAGE/bin/sh"
 ln -sf /usr/bin/bash "$STAGE/bin/bash"
 ln -sf /usr/bin/python$PYV "$STAGE/usr/bin/python3"
 
-cp "$AGENT" "$STAGE/agent.py"; chmod 755 "$STAGE/agent.py"
+cp "$AGENT" "$STAGE/agent"; chmod 755 "$STAGE/agent"
 
 # pip, so the guest starts out able to fetch what an agent asks for. The host has no pip
 # either, so bootstrap it straight into the image's site-packages.
@@ -133,8 +134,13 @@ if [ -n "$gip" ]; then
   echo "sandroute-init: eth0 $gip via $gw, dns ${dns:-1.1.1.1}"
 fi
 
+# Load the interpreter and the commonly used standard library into the page cache, so the snapshot taken after boot carries them and a
+# restored VM does not read them from disk on its first command. A guest agent written in Python used to do this by accident.
+chroot "$R" /usr/bin/python3 -c 'import unittest, json, re, os, sys, subprocess, pathlib, argparse, collections, typing, shutil, tempfile, io, itertools, functools, textwrap, datetime, logging, asyncio' 2>/dev/null
+chroot "$R" /bin/bash -c 'ls / >/dev/null; grep -q . /etc/passwd; sed -n 1p /etc/passwd >/dev/null' 2>/dev/null
+
 while :; do
-  chroot "$R" /usr/bin/python3 /agent.py --workspace "$ws" --vsock-port "$port" --upper /.upper
+  chroot "$R" /agent --workspace "$ws" --vsock-port "$port" --upper /.upper --scratch /tmp
   echo "sandroute-init: agent exited $?, restarting"
   sleep 1
 done

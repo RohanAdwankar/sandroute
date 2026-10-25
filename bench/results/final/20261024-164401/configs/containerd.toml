@@ -1,0 +1,30 @@
+version = 3
+root = "/home/rohan/kata/final/data/root"
+state = "/home/rohan/kata/final/data/state"
+[grpc]
+  address = "/home/rohan/kata/final/run/c.sock"
+  uid = 1000
+  gid = 1000
+[plugins.'io.containerd.cri.v1.runtime'.containerd]
+  default_runtime_name = "kata"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata]
+  runtime_type = "io.containerd.kata.v2"
+  runtime_path = "/home/rohan/kata/root/opt/kata/bin/containerd-shim-kata-v2"
+  privileged_without_host_devices = true
+  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata.options]
+    ConfigPath = "/home/rohan/kata/final/kata-clh.toml"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata-vanilla]
+  runtime_type = "io.containerd.kata.v2"
+  runtime_path = "/home/rohan/kata/root/opt/kata/bin/containerd-shim-kata-v2"
+  privileged_without_host_devices = true
+  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata-vanilla.options]
+    ConfigPath = "/home/rohan/kata/final/kata-vanilla-clh.toml"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/home/rohan/gvisor/containerd-shim-runsc-v1"
+  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc.options]
+    TypeUrl = "io.containerd.runsc.v1.options"
+    ConfigPath = "/home/rohan/kata/final/runsc.toml"
+[plugins.'io.containerd.cri.v1.runtime'.cni]
+  bin_dirs = ["/home/rohan/kata/nerd/libexec/cni"]
+  conf_dir = "/home/rohan/kata/final/cni.d"

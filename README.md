@@ -1,111 +1,128 @@
 # sandroute
 
-A bash tool for coding agents that stays in-process until a command needs a real machine.
+[![736 tenants on a 7 GiB laptop](docs/videos/timelapse-736.png)](docs/videos/timelapse-736.mp4)
 
-Most agent shell calls are `sed`, `grep`, `cat` and `git clone`. Those run in-process on a shared workspace with no container and no VM. When a command needs a real machine, such as a browser or a compiler, sandroute boots a microVM once and sends it there.
+*736 agent tenants on one 7 GiB laptop, replayed from real sessions at 8x. Each tile is a sandbox, blue ran in the light sandbox and orange in a microVM.*
 
-## How it routes
+Sandroute is a sandbox for AI coding agents that serves many more tenants per machine than a microVM each. Commands that only touch files run in a locked-down light sandbox, and anything else runs in a Firecracker microVM that is restored from one shared snapshot, started only when a command needs it, and thrown away when it goes idle. On a 7 GiB laptop that holds 736 mostly idle agent tenants, where a plain microVM per tenant holds 48.
 
-- The command line is parsed. Every command name in it is collected, including those inside `$(...)` and pipelines.
-- If every name is known to the in-process shell, the line runs in-process.
-- If any name is a browser, toolchain, network client or unknown binary, the whole line runs in the VM.
-- Questions about the machine (`command -v`, `which`, `env`, `$PATH`) and any absolute path outside the workspace also go to the VM. The in-process shell would answer about itself, and a real model concluded "chromium is not installed" from exactly that.
-- `git clone`, `init`, `add`, `commit`, `status` and `log` run in-process with no git binary. Other git subcommands go to the VM.
-- The VM boots on the first command that needs it, and is handed back after `idleMs` with no VM-tier command. The next one that needs it restores a snapshot.
+## Try it
 
-The in-process tier is [just-bash](https://github.com/vercel-labs/just-bash) with the workspace mounted at its real path, so absolute paths in agent commands resolve.
+You need an x86_64 Linux machine with KVM (any recent laptop or cloud VM that allows nested virtualization). The commands are for Debian or Ubuntu.
 
-## Spin-down
+**1. Install the tools.**
 
-The question is whether routing can hold latency parity with an agent running inside the
-VM while cutting what the VM costs. Measured on the same turn, 20 tool calls, 500-file
-workspace, real Firecracker:
+```sh
+sudo apt install bubblewrap e2fsprogs python3 curl git build-essential
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh        # Rust, then open a new shell
+sudo usermod -aG kvm $USER                                              # access to /dev/kvm, then log out and in
+```
 
-| config | tool latency | p50 | turn | VM allocated |
-|---|---|---|---|---|
-| agent inside the VM (baseline) | 150ms | 5.4ms | 56253ms | 100% |
-| sandroute, VM kept for the session | 746ms | 18ms | +1.1% | 67.8% |
-| sandroute, 2000ms idle window | 965ms | 18ms | +1.4% | 14.7% |
-| sandroute, 500ms idle window | 979ms | 29ms | +1.5% | 4.2% |
+**2. Get sandroute and build it.** `scripts/setup.sh` downloads Firecracker and a guest kernel and builds the VM image into `~/fcassets` (set `SANDROUTE_ASSETS` to put it elsewhere).
 
-Per tool call routing is 6x slower; per turn that is 1.5%, because tool execution was
-never what the turn was waiting on. Of the 829ms, spin-down is only 233ms -- the rest is
-the in-process tier losing to native `grep -r`. On a 175s turn the saving holds (14.3%
-allocated, turn +1.2%) while lazy boot alone decays from 32.2% saved to 10.4%.
+```sh
+git clone https://github.com/rohox/sandroute && cd sandroute
+scripts/setup.sh
+cargo build --release --examples --bins
+```
 
-    npm run bench:turn -- --idle 2000 --repeat 3
+**3. Start a sandbox from code.** This is `examples/quickstart.rs`; run it with `target/release/examples/quickstart`, or use sandroute from your own project with `sandroute = { git = "https://github.com/rohox/sandroute" }`, `tokio` (features `full`) and `anyhow`.
 
-With real work in the turn -- installing a dependency from PyPI and using it -- the saving is
-smaller and holds: 18.2% allocated at a 500ms window, for +2.39% turn latency.
+```rust
+use sandroute::Sandroute;
 
-    npm run bench:turn -- --heavy --idle 500      # needs SANDROUTE_TAP
+let sandbox = Sandroute::create().await?;                    // a fresh, isolated sandbox
+sandbox.write_file("hello.py", "print('hi')").await?;        // files live in /work
+let res = sandbox.run("python3 hello.py", None).await?;      // runs in a microVM, started on demand
+println!("{} (exit {}, ran in {:?})", res.stdout.trim(), res.exit_code, res.tier);
+let res = sandbox.run("cat hello.py", None).await?;          // only touches files: the light sandbox, no VM
+sandbox.close().await?;                                      // stops the VM, deletes the workspace
+```
 
-A VM that is also released when idle, with every command sent to it (`--all-vm`), is the fairer
-control. Routing takes it from 20.6% to 4.4% allocated on the light turn and from 30.2% to 16.7%
-on the one with real work, so most of the saving is releasing, and routing adds 1.8x to 4.7x.
+```
+hi (exit 0, ran in Vm)
+print('hi') (exit 0, ran in Light)
+```
 
-The reasoning and the rest of the measurements are in
-[docs/in-turn-spin-down.md](docs/in-turn-spin-down.md).
+**4. Give a coding agent a sandbox.** `sandroute-mcp` is an [MCP](https://modelcontextprotocol.io) server that gives an agent the six tools coding agents use (bash, read, write, edit, glob, grep), all running in a sandbox over the current directory. With [opencode](https://opencode.ai):
 
-Priming a snapshot costs a cold boot plus a `/snapshot/create`, about 2.5-4.4s. Do it ahead
-of a session rather than on a user's first heavy command:
+```sh
+npm i -g opencode-ai          # or: curl -fsSL https://opencode.ai/install | bash
+cd ~/my-project
+cat > opencode.json <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "mcp": { "sandroute": { "type": "local", "command": ["/path/to/sandroute/target/release/sandroute-mcp"] } },
+  "tools": { "bash": false, "read": false, "write": false, "edit": false, "glob": false, "grep": false }
+}
+EOF
+opencode mcp list             # sandroute: connected
+opencode                      # the agent now works in /work, in the sandbox, and your project files change as it edits
+```
 
-    SANDROUTE_FC_KERNEL=... SANDROUTE_FC_ROOTFS=... SANDROUTE_FC_SNAPSHOT_DIR=... \
-      npm run prewarm -- /path/to/workspace
+The `tools` block turns off opencode's own tools, so every command and every file edit goes through the sandbox. Files the agent writes appear in your project directory; anything it installs or runs stays inside.
 
-## Use with opencode
+**5. Start a lot of sandboxes.** The same job as the usual E2B example, a hundred sandboxes at once, each writing a file and reading it back, is `examples/hundred.rs`:
 
-Copy `opencode/shared.ts` to `<project>/.opencode/shared.ts`, and `bash.ts`, `read.ts`,
-`write.ts` and `edit.ts` to `<project>/.opencode/tool/`. Each has the same name as a
-built-in, so it overrides it; the shared module sits outside `tool/` because opencode
-registers everything in there as a tool. Opencode itself is unmodified.
+```sh
+target/release/examples/hundred 100        # 0.8 s and 23 MiB: the read is a file command, so no VM
+target/release/examples/hundred 100 vm     # 2.0 s and 242 MiB: the read runs in a microVM
+target/release/examples/hundred 700 vm     # 18.5 s and 3.1 GiB: 700 microVMs on a 7 GiB laptop
+```
 
-The file tools matter as much as bash. Left alone they write straight to the host with
-nothing holding them to the workspace, and a live agent reaches for them constantly --
-in two recorded runs the agent created its main source file with `write`, so the sandbox
-never saw it. Routed here they go through the same filesystem the in-process shell uses,
-so a path outside the workspace resolves into an empty in-memory filesystem instead of
-the host, and symlinks out are refused.
+To compare against another local microVM runtime, `uv run bench/compare/microsandbox_hundred.py 100` does the same job with [microsandbox](https://github.com/superradcompany/microsandbox). It uses 4.6 GiB for 100 sandboxes, and at 130 at once the machine runs out of memory. Here are both, started 130 at once on the same laptop:
+
+[![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.png)](docs/videos/exhaustion-130.mp4)
+
+*Microsandbox boots all 130 microVMs together, memory climbs to the limit before most have finished, and the run is stopped with 34 done. Sandroute finishes all 130 in 3.4 s.*
+
+## The SDK
+
+`Sandroute` is one sandbox. Everything is async (tokio) and returns `anyhow::Result`.
+
+| | |
+|---|---|
+| `Sandroute::create()` | a sandbox with a fresh, empty workspace |
+| `Sandroute::open(dir)` | a sandbox over an existing directory; the files appear at `/work`, and what the sandbox changes lands in `dir` |
+| `run(command, cwd)` | run a shell command, returns a `RunResult` |
+| `read_file`, `write_file`, `edit_file`, `glob`, `grep_files` | the file tools; they run in the light sandbox, never in a VM |
+| `prewarm()` | start the VM now, when you know the next command will need one |
+| `release()` | hand the VM back now instead of waiting for it to go idle |
+| `close()` | stop everything and delete what `create` made; `open` never deletes your directory |
+
+`RunResult` has `stdout`, `stderr`, `exit_code`, `tier` (`Tier::Light`, the light sandbox, or `Tier::Vm`), `reason` (why that tier), `booted` (this command started the VM) and `ms`.
+
+**What decides where a command runs.** The command line is parsed. If every command in it is a file utility (`ls`, `cat`, `grep`, `sed`, `find` and the like) and it stays inside the workspace, it runs in the light sandbox: a fresh set of namespaces and a seccomp filter around the command, about 6 ms, no VM. Anything else (an interpreter, a compiler, `git`, a network client, `which`, a path outside the workspace) runs in a microVM. You never choose; `res.tier` and `res.reason` tell you what happened.
+
+**The VM's life.** The first command that needs a VM starts one by restoring a snapshot taken once at setup, which takes tens of milliseconds and holds only the pages it touches (about 27 MiB). After five idle seconds the VM is released: killed if the guest holds nothing outside the workspace and `/tmp`, or snapshotted to disk if it does (a `pip install`, say). The next command that needs a VM restores it. The workspace is kept in step both ways around every VM command, so the light sandbox and the VM always see the same files.
+
+**Isolation.** Every sandbox is its own microVM or its own set of namespaces with a seccomp filter (the Docker default profile's 299 system calls), so tenants cannot see each other or the host. The light sandbox has no network. Whether the guest has a network is set when the VM is built (`scripts/net-setup.sh`).
+
+**More control.** `Sandroute::new(SandrouteOptions { .. })` takes your own VM backend (`MicroVm` with `VmOptions` for Firecracker or Cloud Hypervisor, or `CriVm` for Kata and gVisor), memory and vCPU sizes, the idle window, and the workspace path. The benchmarks in `src/bin/` are built on it.
+
+## Benchmarks
+
+How many tenants one machine serves, replaying 26 recorded agent sessions, is in [docs/capacity.md](docs/capacity.md); the tricks other providers use are in [docs/tricks.md](docs/tricks.md).
+
+| design on a 7 GiB laptop | tenants held (p99 added latency under 1.5 s) |
+|---|---|
+| sandroute | 736 |
+| microVM per tenant, restored from a shared snapshot, released when idle | 640 |
+| the same, kept up | 176 |
+| kill idle VMs and cold boot | 64 |
+| microVM per tenant, cold booted, kept up | 48 |
+| Kata Containers | 40 |
+
+```sh
+target/release/tenants --design oxroute --tenants 64 --minutes 6    # the capacity benchmark
+target/release/tiers                                                  # what one command costs in each tier
+uv run --with matplotlib --with seaborn --with pandas bench/charts.py out/   # the charts
+bench/final/go.sh                                                     # the full run, about 4 hours, on an idle machine
+```
 
 ## Test
 
-    npm test          # router and runtime unit tests
-    npx tsx e2e/run.mts   # opencode driving the tool against a scripted model
-
-    npx tsx e2e/live.mts  # same, with a real free-tier model (opencode/big-pickle, no key)
-
-The e2e run uses a scripted OpenAI-compatible server in place of a real model, so the sequence of commands is fixed. It checks the routing, not model behaviour.
-
-## Firecracker backend
-
-`FirecrackerVm` starts a Firecracker microVM, talks to a guest agent (`guest/agent.py`) over vsock, and keeps the workspace in step: before each VM command it pushes files that changed on the host, and after it pulls files the command changed. The workspace sits at the same absolute path in the guest.
-
-The rootfs init must mount `devpts` at `/dev/pts`. Without it nothing in the guest can
-open a terminal -- `pty.fork()` fails outright -- so no interactive program works there.
-
-Select it in the opencode tool with `SANDROUTE_VM=firecracker`, `SANDROUTE_FC_KERNEL` (vmlinux) and `SANDROUTE_FC_ROOTFS` (ext4 with bash, python3 and the agent started at boot with `--vsock-port 5000 --workspace <path from the sandroute.workspace kernel arg>`). Also `SANDROUTE_FC_SNAPSHOT_DIR` to restore from a snapshot instead of cold booting, `SANDROUTE_IDLE_MS` to release the VM when idle, and `SANDROUTE_FC_CONSOLE` to see the guest console.
-
-## Status
-
-- Tested: the router, the in-process git, the guest agent protocol and the file sync (agent run as a plain process on a unix socket), and the Firecracker API call sequence.
-- Booted for real on a host with KVM, against kernel 6.1.128 from Firecracker's CI bucket and a hand-built ext4 rootfs: cold boot to agent ready 773ms, snapshot restore 11ms, later VM commands ~10ms, and the sync moved files both ways. Firecracker appends `root=/dev/vda rw` itself, so the default boot args need nothing added.
-- There is no per-command latency to win by staying out of the VM. `bash -c` in the guest measured 1.24ms against 1.16ms on the host, and the in-process tier is 1.2-2.5ms. The win is VM-allocated seconds, not latency.
-- A snapshot is tied to one workspace path, because the guest agent's root arrives on the kernel command line and is baked into guest memory.
-- The guest is meant to behave like any other machine that happens to be isolated from the
-  host: it reaches the internet, installs what it needs, and cannot reach the host. Pass
-  `network` to `FirecrackerVm` after running `scripts/net-setup.sh` once as root -- a tap
-  device needs CAP_NET_ADMIN, so sandroute cannot create one for itself. Without it the guest
-  has loopback only, and an agent that hits a missing tool has no way to go and get it.
-  `npx tsx e2e/capabilities.mts` reports which of the two it is.
-- Verified end to end against a real tap: the guest gets `eth0` with a route and resolver,
-  resolves DNS, speaks TLS, installs a package from PyPI, and cannot reach the host.
-  `SANDROUTE_TAP=sr-tap0 npx tsx e2e/capabilities.mts` checks all of it.
-- The image has to carry three things most base images take for granted, or the guest has a
-  working network and still cannot use it: a CA bundle, `pip`, and no PEP 668
-  `EXTERNALLY-MANAGED` marker. Without the first, TLS fails everywhere; without the last,
-  `pip install` refuses and tells the agent to make a virtualenv.
-- The rootfs image is not built by this repo yet.
-- `FirecrackerVm` spawns firecracker with `stdio: "ignore"`, so there is no way to see the guest console when a boot goes wrong.
-- Sync compares mtime and size and sends whole files, so a large workspace is slow to push, and spin-down makes that a recurring cost: a VM-tier no-op is 1.7ms at 10 files, 9.4ms at 500 and 48.6ms at 3000. Sharing the workspace into the guest with virtio-fs would remove it and leave the wake at the 11ms restore.
-- `HostProcessVm` is the default and is not isolated.
-- A command that fails in-process is not retried in the VM.
+```sh
+cargo test                                # the router, sandbox, sync, orchestrator and a corpus of recorded commands
+cargo test --test vm_live -- --ignored    # boots real VMs, needs KVM and the setup above
+```
