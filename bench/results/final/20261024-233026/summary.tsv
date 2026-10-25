@@ -1,0 +1,11 @@
+series	design	tenants	seed	p99ms	met	aborted	peakcpu	minavailMiB
+gvisor-cold	gvisor-cold	80	1	534	true		88.9	4439.0
+gvisor-cold	gvisor-cold	80	2	540	true		95.4	3954.0
+gvisor-cold	gvisor-cold	112	1	1053	true		98.9	3447.0
+gvisor-cold	gvisor-cold	112	2	1600	false		99.8	3122.0
+kata	kata	40	1	333	true		29.2	710.0
+kata	kata	40	2	324	true		30.8	369.0
+kata	kata	56	1	952	false	memory: 292 MiB left	49.6	284.0
+kata	kata	56	2	383	false	memory: 299 MiB left	40.9	295.0
+kata-vanilla	kata	32	1	352	false	memory: 270 MiB left	21.8	270.0
+kata-vanilla	kata	32	2	338	true		30.6	303.0

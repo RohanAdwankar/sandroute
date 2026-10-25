@@ -1,0 +1,22 @@
+=== gvisor-cold  (--design gvisor-cold, window 30000ms, idle-mean 120s)
+gvisor-cold-n80-s1             calls 2327  p50 68  p95 335  p99 534ms  VMs peak 100.0 (6119.0 MiB)  disk 0.0 GiB  cpu 28.5%/88.9%  err 0  SLO met
+gvisor-cold-n80-s2             calls 2451  p50 69  p95 347  p99 540ms  VMs peak 126.0 (7803.0 MiB)  disk 0.0 GiB  cpu 30.0%/95.4%  err 0  SLO met
+--- gvisor-cold 80: 2 of 2 seeds met the target
+gvisor-cold-n112-s1            calls 3346  p50 93  p95 546  p99 1053ms  VMs peak 144.0 (9109.0 MiB)  disk 0.0 GiB  cpu 43.2%/98.9%  err 0  SLO met
+gvisor-cold-n112-s2            calls 3417  p50 98  p95 684  p99 1600ms  VMs peak 161.0 (10169.0 MiB)  disk 0.0 GiB  cpu 43.8%/99.8%  err 0  SLO missed
+--- gvisor-cold 112: 1 of 2 seeds met the target
+--- gvisor-cold stops at 112
+=== kata  (--design kata, window 30000ms, idle-mean 120s)
+kata-n40-s1                    calls 1249  p50 52  p95 132  p99 333ms  VMs peak 40.0 (7638.0 MiB)  disk 0.0 GiB  cpu 10.7%/29.2%  err 0  SLO met
+kata-n40-s2                    calls 1289  p50 51  p95 126  p99 324ms  VMs peak 40.0 (7962.0 MiB)  disk 0.0 GiB  cpu 10.9%/30.8%  err 0  SLO met
+--- kata 40: 2 of 2 seeds met the target
+kata-n56-s1                    calls 507  p50 54  p95 287  p99 952ms  VMs peak 47.0 (5990.0 MiB)  disk 0.0 GiB  cpu 8.5%/49.6%  err 33  ABORTED memory: 292 MiB left
+kata-n56-s2                    calls 1036  p50 49  p95 174  p99 383ms  VMs peak 45.0 (7107.0 MiB)  disk 0.0 GiB  cpu 10.7%/40.9%  err 90  ABORTED memory: 299 MiB left
+--- kata 56: 0 of 2 seeds met the target
+--- kata stops at 56
+=== kata-vanilla  (--design kata, window 30000ms, idle-mean 120s)
+kata-vanilla-n32-s1            calls 252  p50 49  p95 259  p99 352ms  VMs peak 32.0 (7348.0 MiB)  disk 0.0 GiB  cpu 5.3%/21.8%  err 0  ABORTED memory: 270 MiB left
+kata-vanilla-n32-s2            calls 1097  p50 51  p95 117  p99 338ms  VMs peak 32.0 (7660.0 MiB)  disk 0.0 GiB  cpu 8.3%/30.6%  err 0  SLO met
+--- kata-vanilla 32: 1 of 2 seeds met the target
+--- kata-vanilla stops at 32
+done; see bench/results/final/20261024-233026/summary.tsv
