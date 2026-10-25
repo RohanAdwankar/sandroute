@@ -11,6 +11,6 @@ export PATH="$HOME/.cargo/bin:$PATH"
 sudo true || exit 1
 sudo pkill -f 'containerd --confi[g]'                      # the old containerds, started before kata-vanilla was in the config
 sleep 3
-sudo rm -rf "$HOME"/tenant-run "$HOME"/tenant-run.stale-*  # root-owned files left by pods
+sudo rm -rf "$HOME"/tenant-run*  # root-owned files left by pods
 sudo find bench/results/final -maxdepth 1 -user root -exec rm -rf {} +
 SEEDS="1 2" bench/final/run.sh

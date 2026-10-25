@@ -365,7 +365,7 @@ async fn main() -> Result<()> {
         balloon: flag("--balloon"),
         seed: arg("--seed", "1").parse()?,
         slo_p99: arg("--slo-p99", "1500").parse()?,
-        run: PathBuf::from(&home).join("tenant-run"),
+        run: PathBuf::from(&home).join(format!("tenant-run-{}", std::process::id())), // one directory per run, so two runs cannot delete each other's workspaces
         assets: std::env::var("SANDROUTE_ASSETS").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(&home).join("fcassets")),
         fixture: root.join("bench/fixtures/textstats"),
         design,
