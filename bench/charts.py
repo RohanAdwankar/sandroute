@@ -9,10 +9,10 @@ import seaborn as sns
 
 # the post's four levels: (label, series, tenants held: both seeds passed)
 LEVELS = [
-    ("1. cold boot, kept up", "fc-vanilla", 48),
-    ("2. kill idle, cold boot", "fc-claude", 64),
-    ("3. snapshot, release idle", "suspend", 640),
-    ("4. light sandbox routing", "oxroute", 736),
+    ("1. Cold Boots", "fc-vanilla", 48),
+    ("2. Idle Killing", "fc-claude", 64),
+    ("3. Snapshots", "suspend", 640),
+    ("4. Routing", "oxroute", 736),
 ]
 # the look of the demo GIFs: near-black background, light text, monospace, blue for the light sandbox and orange for a VM
 BG, INK, MUTED, GRID, BLUE, ORANGE, BAR = "#161614", "#e8e8e3", "#8c8b86", "#3a3a36", "#2a78d6", "#d9772b", "#55544f"
