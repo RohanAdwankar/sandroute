@@ -14,8 +14,8 @@
 //!
 //!   cargo run --release --bin tenants -- --design oxroute --tenants 64 --minutes 6
 use anyhow::Result;
-use sandroute::cri::{CriOptions, CriVm};
 use sandroute::sandbox::{Sandbox, SandboxOptions};
+use sandroute_bench::cri::{CriOptions, CriVm};
 use sandroute::sandroute::{Sandroute, SandrouteOptions};
 use sandroute::traces::{self, Call, Trace};
 use sandroute::vm::{KillOnRelease, VmBackend};
@@ -346,7 +346,7 @@ async fn tenant(ctx: Arc<Ctx>, i: usize, s: Sandroute, end_at: Instant, ws: Path
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let home = std::env::var("HOME").unwrap_or_default();
     let design = arg("--design", "oxroute");
     let cfg = Cfg {

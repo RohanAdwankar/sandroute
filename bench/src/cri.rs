@@ -2,7 +2,7 @@
 //! With Kata the pod is a VM; with gVisor it is a userspace kernel. These are what someone running Kubernetes picks to hold hostile tenants
 //! apart. Neither has a snapshot to release a pod to, so the only way one gives memory back is to delete the pod, and the next command boots a
 //! new one.
-use crate::vm::{VmBackend, VmResult};
+use sandroute::vm::{VmBackend, VmResult};
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use serde_json::json;
