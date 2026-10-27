@@ -7,7 +7,7 @@ use crate::vm::{Live, VmBackend};
 use crate::vmm::{MicroVm, VmOptions, Vmm};
 use anyhow::{anyhow, bail, Result};
 use serde_json::json;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -150,34 +150,45 @@ impl Sandroute {
     /// from the kernel and image in `$SANDROUTE_ASSETS` (default `~/fcassets`, made by `scripts/setup.sh`). A VM is only started when a command
     /// needs one, and is released after five idle seconds. Call `close` when done.
     pub async fn create() -> Result<Self> {
+        Self::create_with(1, 256).await
+    }
+
+    /// `create` with a VM of `cpus` vCPUs and `mem_mib` MiB of memory. Sandboxes of one size share one snapshot, so a new size boots once more.
+    pub async fn create_with(cpus: u32, mem_mib: u32) -> Result<Self> {
         let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
         let workspace = root.join("work");
         std::fs::create_dir_all(&workspace)?;
-        Self::build(workspace, root).await
+        Self::build(workspace, root, cpus, mem_mib).await
     }
 
     /// The same, over a directory that already exists, such as a project. Its files are seen at `/work` inside the sandbox, `close` leaves
     /// them alone, and changes the sandbox makes land in the directory.
     pub async fn open(dir: impl AsRef<Path>) -> Result<Self> {
-        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
-        Self::build(dir.as_ref().canonicalize()?, root).await
+        Self::open_with(dir, 1, 256).await
     }
 
-    async fn build(workspace: PathBuf, root: PathBuf) -> Result<Self> {
-        static PRIMED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+    /// `open` with a VM of `cpus` vCPUs and `mem_mib` MiB of memory.
+    pub async fn open_with(dir: impl AsRef<Path>, cpus: u32, mem_mib: u32) -> Result<Self> {
+        let root = tempfile::Builder::new().prefix("sandroute-").tempdir()?.keep();
+        Self::build(dir.as_ref().canonicalize()?, root, cpus, mem_mib).await
+    }
+
+    async fn build(workspace: PathBuf, root: PathBuf, cpus: u32, mem_mib: u32) -> Result<Self> {
+        static PRIMED: std::sync::Mutex<Option<HashMap<(u32, u32), Arc<tokio::sync::OnceCell<()>>>>> = std::sync::Mutex::new(None);
         let assets = std::env::var("SANDROUTE_ASSETS").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("fcassets"));
         let vm = |root: &Path| {
             let mut o = VmOptions::new(Vmm::Firecracker, assets.join("vmlinux-6.1.128").to_string_lossy(), assets.join("rootfs.ext4").to_string_lossy());
             o.bin = Some(assets.join("firecracker").to_string_lossy().into());
-            o.vcpus = Some(1);
-            o.mem_mib = Some(256);
+            o.vcpus = Some(cpus);
+            o.mem_mib = Some(mem_mib);
             o.guest_workspace = Some("/work".into());
-            o.snapshot_dir = Some(assets.join("pristine-default"));
+            o.snapshot_dir = Some(assets.join(format!("pristine-{cpus}c-{mem_mib}m")));
             o.session_dir = Some(root.join("sessions"));
             MicroVm::new(o)
         };
-        // the first boot writes the shared snapshot, so it happens once and the sandboxes created meanwhile wait for it
-        PRIMED.get_or_try_init(|| async {
+        // the first boot of a size writes its shared snapshot, so it happens once and the sandboxes of that size created meanwhile wait for it
+        let primed = PRIMED.lock().unwrap().get_or_insert_with(HashMap::new).entry((cpus, mem_mib)).or_default().clone();
+        primed.get_or_try_init(|| async {
             let prime = tempfile::Builder::new().prefix("sandroute-prime-").tempdir()?;
             let warm = vm(prime.path());
             warm.boot(&prime.path().join("work")).await?;

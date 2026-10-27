@@ -23,17 +23,19 @@ def load(path):
 
 runs = [(ln, load(lp)), (rn, load(rp))]
 end = max(r["t"].max() for _, r in runs)
-fig = plt.figure(figsize=(12.8, 7.2), dpi=100, facecolor=BG)
+H = 600  # pixels: the content ends at the stats line, so nothing below it but the caption
+Y = lambda f: (f * 720 - 120) / H  # a height measured from the bottom of the old 720 pixel frame
+fig = plt.figure(figsize=(12.8, H / 100), dpi=100, facecolor=BG)
 cols, rows_ = 13, math.ceil(COUNT / 13)
 panels = []
 for i, (name, r) in enumerate(runs):
     x0 = 0.02 + i * 0.50
-    fig.text(x0, 0.93, name, color=INK, fontsize=16, family="monospace", va="center")
-    tiles = fig.add_axes([x0, 0.30, 0.30, 0.58]); tiles.set_xlim(0, cols); tiles.set_ylim(rows_, 0); tiles.axis("off")
-    stat = fig.text(x0, 0.255, "", color=INK, fontsize=10, family="monospace", va="center")
+    fig.text(x0, Y(0.93), name, color=INK, fontsize=16, family="monospace", va="center")
+    tiles = fig.add_axes([x0, Y(0.30), 0.30, 0.58 * 720 / H]); tiles.set_xlim(0, cols); tiles.set_ylim(rows_, 0); tiles.axis("off")
+    stat = fig.text(x0, Y(0.255), "", color=INK, fontsize=10, family="monospace", va="center")
     charts = []
     for j, (title, key, ylim) in enumerate((("memory used (GiB)", "used", (0, MEM_TOTAL)), ("cpu busy (%)", "cpu", (0, 100)))):
-        ax = fig.add_axes([x0 + 0.33, 0.58 - j * 0.30 + 0.0, 0.14, 0.24], facecolor=BG)
+        ax = fig.add_axes([x0 + 0.33, Y(0.58 - j * 0.30), 0.14, 0.24 * 720 / H], facecolor=BG)
         ax.set_title(title, color=INK, fontsize=9, loc="left"); ax.set_xlim(0, end); ax.set_ylim(*ylim)
         ax.plot(r["t"], r[key], color=GRID, linewidth=1)
         if key == "used":
@@ -43,9 +45,9 @@ for i, (name, r) in enumerate(runs):
         for side in ("left", "bottom"): ax.spines[side].set_color(GRID)
         charts.append((ax.plot([], [], color=INK, linewidth=1.6)[0], ax.plot([], [], "o", color=INK, markersize=4)[0], key))
     panels.append((r, tiles, stat, charts))
-fig.text(0.02, 0.02, f"one tile per sandbox, {COUNT} started at once on a 7 GiB laptop: grey while starting, blue once its command has finished   dotted line: the run is stopped below 300 MiB free", color=MUTED, fontsize=8, family="monospace")
+fig.text(0.02, 14 / H, f"one tile per sandbox, {COUNT} started at once on a 7 GiB laptop: grey while starting, blue once its command has finished   dotted line: the run is stopped below 300 MiB free", color=MUTED, fontsize=8, family="monospace")
 
-proc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "1280x720", "-r", str(FPS), "-i", "-",
+proc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"1280x{H}", "-r", str(FPS), "-i", "-",
                          "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", out], stdin=subprocess.PIPE)
 patches = []
 for f in range(int((end + 1.5) / SPEED * FPS)):
