@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "Routes an agent's commands: a cheap sandbox for the ones that only touch files, a microVM for the rest."
 
 [workspace]
-members = [".", "guest-agent"]
+members = [".", "guest-agent", "bench"]
 
 [dependencies]
 anyhow = "1"

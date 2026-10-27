@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     let a = PathBuf::from(std::env::var("SANDROUTE_ASSETS").unwrap_or_else(|_| format!("{}/fcassets", std::env::var("HOME").unwrap_or_default())));
     let ws = tempfile::tempdir()?;
     let w = ws.path();
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/textstats");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/textstats");
     anyhow::ensure!(std::process::Command::new("cp").arg("-r").arg(format!("{}/.", fixture.display())).arg(w).status()?.success());
     // a project with enough files for find and grep to have something to do
     for i in 0..300 {

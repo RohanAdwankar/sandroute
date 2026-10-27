@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../.."
 SEEDS=${SEEDS:-"1 2 3"}; MINUTES=${MINUTES:-6}; ONLY=${ONLY:-}
 OUT=bench/results/final/$(date +%Y%m%d-%H%M%S); mkdir -p "$OUT/configs"
 exec > >(tee -a "$OUT/log.txt") 2>&1
-cargo build --release --quiet --bins || exit 1
+cargo build --release --quiet -p sandroute-bench || exit 1
 CRICFG=$(bench/final/setup-cri.sh | tail -1)
 CT="$HOME/kata/nerd/bin/crictl --config $CRICFG"
 [ -n "$ONLY" ] && [[ " $ONLY " != *" kata-vanilla "* ]] || $CT info 2>/dev/null | grep -q kata-vanilla || { echo "the running containerd has an older config; stop it (sudo pkill -f 'final/containerd.toml') and run again"; exit 1; }
@@ -38,7 +38,7 @@ clean
   echo "--- processes using cpu at the start"; ps -eo pcpu,rss,comm --sort=-pcpu | head -8
 } > "$OUT/environment.txt"
 cp "$HOME"/kata/final/*.toml "$HOME"/kata/final/crictl.yaml "$HOME"/kata/final/cni.d/* "$OUT/configs/"
-cp src/bin/tenants.rs src/cri.rs bench/final/run.sh "$OUT/configs/"
+cp bench/src/bin/tenants.rs bench/src/cri.rs bench/final/run.sh "$OUT/configs/"
 echo -e "series\tdesign\ttenants\tseed\tp99ms\tmet\taborted\tpeakcpu\tminavailMiB" > "$OUT/summary.tsv"
 
 # series NAME "design flags" WINDOW_MS IDLE_MEAN "levels" [cri runtime]

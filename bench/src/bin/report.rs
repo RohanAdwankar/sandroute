@@ -5,7 +5,7 @@ use serde_json::Value;
 
 fn main() -> anyhow::Result<()> {
     let only = std::env::args().nth(1);
-    let mut rs: Vec<Value> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/bench/results"))?
+    let mut rs: Vec<Value> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/results"))?
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| serde_json::from_str(&std::fs::read_to_string(e.path()).ok()?).ok())

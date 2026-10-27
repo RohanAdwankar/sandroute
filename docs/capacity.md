@@ -353,7 +353,7 @@ Cold booting suits a host with room to spare, as Claude Code's evidently is, and
 
 ## What one command costs in each tier
 
-The same command, run 60 times in each place, in a project of 300 small files (`src/bin/tiers.rs`; medians, with 95th percentiles for the slowest of the three):
+The same command, run 60 times in each place, in a project of 300 small files (`bench/src/bin/tiers.rs`; medians, with 95th percentiles for the slowest of the three):
 
 | command | host, nothing around it | light sandbox | Firecracker, warm |
 |---|---|---|---|
@@ -435,7 +435,7 @@ snapshot, and the read tool failing on a directory.
 ## Reproducing it
 
     scripts/build-rootfs.sh
-    cargo build --release --bins
+    cargo build --release -p sandroute-bench
     target/release/tenants --calibrate --design kept --tenants 1
     target/release/tenants --design oxroute --tenants 256 --minutes 6 --idle-mean 120 --window 30000
     target/release/tenants --design kata --tenants 48 --minutes 6 --idle-mean 120   # needs containerd with Kata, see bench/final/setup-cri.sh
