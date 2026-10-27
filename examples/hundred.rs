@@ -6,7 +6,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 async fn run_single_sandbox(idx: usize, vm: bool) -> anyhow::Result<()> {
     // Create an isolated sandbox
-    let sandbox = Sandroute::create().await?;
+    let sandbox = Sandroute::create_with(1, 512).await?; // 1 vCPU and 512 MiB for the VM
     let random = format!("{idx}-{:x}", SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos());
 
     // Write a file inside the sandbox
