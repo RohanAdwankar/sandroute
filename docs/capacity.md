@@ -107,7 +107,7 @@ Taken on an idle machine with `bench/final/run.sh`, two seeds per tenant count, 
 | design | holds | next count tried | what runs out |
 |---|---|---|---|
 | oxroute, 30 s window | 736 | 768 missed on both seeds | cpu |
-| suspend, 5 s window | 640 | 704 missed on both | cpu |
+| suspend, 5 s window | 576 (640 held in this run; see the Oct 27 rerun below) | 640 missed on all three seeds on Oct 27 | cpu |
 | kept, restored from the shared snapshot | 176 | 192 ran out of memory on both | memory |
 | gvisor-cold | 80 (112 passed on one of two) | 112 | cpu |
 | fc-claude, kill idle and cold boot | 64 | 96 ran out of memory on both | memory |
@@ -115,6 +115,17 @@ Taken on an idle machine with `bench/final/run.sh`, two seeds per tenant count, 
 | kata, reporting on, 256 MiB | 40 | 56 ran out of memory on both | memory |
 | kata-vanilla, shipped defaults | under 32 (one of two seeds passed at 32) | | memory |
 | ch-muse, Cloud Hypervisor 2 vCPU 8 GiB | 16 | 32 ran out of memory on both | memory |
+
+### Rerun of Oct 27
+
+The blog post's videos were recorded with event logging on, and a recording of the `suspend` design at 640 tenants missed the target twice, so the benchmark was rerun without any recording (`bench/results/final/20261027-*`). Three seeds each:
+
+- `suspend` at 576 tenants passed all three seeds (p99 882, 1,092 and 936 ms).
+- `suspend` at 640 tenants failed all three (p99 2,142, 2,446 and 2,140 ms), although it had passed both seeds on Oct 24 (1,291 and 1,223 ms).
+- `suspend` at 608 tenants passed 3 of 3 in a first run (1,225, 1,255 and 1,104 ms) and 1 of 3 in a second (1,007, 1,762 and 2,455 ms). The raw files of the first run were deleted by mistake, so only its log is kept.
+- `oxroute` at 736 tenants passed all three seeds (627, 687 and 1,072 ms).
+
+So the limit of the `suspend` design is between 576 and 640 tenants and moves with the state of the machine; 576 is the number it held every time. The event logs behind the level videos are in `bench/results/recordings/`.
 
 Not rerun in the final: gvisor kept up, kata-cold, the balloon variants, fc-instinct and the Cloud Hypervisor snapshot designs. Their earlier rough numbers below stand as rough.
 
