@@ -11,7 +11,7 @@ import seaborn as sns
 LEVELS = [
     ("1. Cold Boots", "fc-vanilla", 48),
     ("2. Idle Killing", "fc-claude", 64),
-    ("3. Snapshots", "suspend", 640),
+    ("3. Snapshots", "suspend", 576),
     ("4. Routing", "oxroute", 736),
 ]
 # the look of the demo GIFs: near-black background, light text, monospace, blue for the light sandbox and orange for a VM
