@@ -1,0 +1,23 @@
+2026-10-27T03:47:38+00:00
+Linux oxroute 7.0.0-38-generic #38-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep  4 09:10:14 UTC 2026 x86_64 GNU/Linux
+model name	: 11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz
+cores: 4
+MemTotal:        7396708 kB
+MemAvailable:    6061384 kB
+SwapTotal:       4194300 kB
+load: 0.26 2.40 1.68 1/325 3384937
+git: 28225fcd798b70571914a7c340222a4a49e3dbba 1 uncommitted files
+rustc: rustc 1.98.1 (48a229cea 2026-09-01)
+Firecracker v1.17.0
+kata-runtime  : 4.3.1
+runsc version release-20261019.0
+containerd github.com/containerd/containerd/v2 v2.4.1 f2551031d7276a770f65f98c9b52e57e7dad07e8
+--- processes using cpu at the start
+%CPU   RSS COMMAND
+ 2.0 311456 claude
+ 2.0 38544 nvim
+ 0.7     0 kswapd0
+ 0.5  6684 htop
+ 0.4 96272 claude
+ 0.4 85384 claude
+ 0.2 50824 containerd

@@ -1,0 +1,3 @@
+runtime-endpoint: unix:///home/rohan/kata/final/run/c.sock
+image-endpoint: unix:///home/rohan/kata/final/run/c.sock
+timeout: 60

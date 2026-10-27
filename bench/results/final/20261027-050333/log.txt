@@ -1,0 +1,6 @@
+=== oxroute  (--design oxroute, window 30000ms, idle-mean 120s)
+oxroute-n736-s1                calls 22465  p50 18  p95 218  p99 627ms  VMs peak 304.0 (3046.0 MiB)  disk 0.0 GiB  cpu 46.5%/100.0%  err 0  SLO met
+oxroute-n736-s2                calls 21993  p50 19  p95 260  p99 687ms  VMs peak 297.0 (2983.0 MiB)  disk 0.0 GiB  cpu 46.1%/100.0%  err 0  SLO met
+oxroute-n736-s3                calls 21777  p50 19  p95 343  p99 1072ms  VMs peak 310.0 (3022.0 MiB)  disk 0.0 GiB  cpu 45.4%/100.0%  err 0  SLO met
+--- oxroute 736: 3 of 3 seeds met the target
+done; see bench/results/final/20261027-050333/summary.tsv

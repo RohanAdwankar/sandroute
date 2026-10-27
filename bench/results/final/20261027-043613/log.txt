@@ -1,0 +1,6 @@
+=== suspend  (--design suspend, window 5000ms, idle-mean 120s)
+suspend-n608-s1                calls 18277  p50 46  p95 479  p99 1225ms  VMs peak 225.0 (1841.0 MiB)  disk 0.0 GiB  cpu 46.8%/100.0%  err 0  SLO met
+suspend-n608-s2                calls 17903  p50 49  p95 500  p99 1255ms  VMs peak 230.0 (1681.0 MiB)  disk 0.0 GiB  cpu 47.5%/100.0%  err 0  SLO met
+suspend-n608-s3                calls 17950  p50 48  p95 478  p99 1104ms  VMs peak 216.0 (1651.0 MiB)  disk 0.0 GiB  cpu 48.4%/100.0%  err 0  SLO met
+--- suspend 608: 3 of 3 seeds met the target
+done; see bench/results/final/20261027-043613/summary.tsv

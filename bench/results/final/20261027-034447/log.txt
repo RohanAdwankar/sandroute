@@ -1,0 +1,11 @@
+=== suspend  (--design suspend, window 5000ms, idle-mean 120s)
+suspend-n576-s1                calls 17512  p50 41  p95 378  p99 882ms  VMs peak 209.0 (1658.0 MiB)  disk 0.0 GiB  cpu 43.7%/99.8%  err 0  SLO met
+suspend-n576-s2                calls 17085  p50 39  p95 393  p99 1092ms  VMs peak 234.0 (1719.0 MiB)  disk 0.0 GiB  cpu 43.9%/100.0%  err 0  SLO met
+suspend-n576-s3                calls 17491  p50 41  p95 388  p99 936ms  VMs peak 213.0 (1723.0 MiB)  disk 0.0 GiB  cpu 43.7%/100.0%  err 0  SLO met
+--- suspend 576: 3 of 3 seeds met the target
+suspend-n640-s1                calls 19598  p50 66  p95 964  p99 2142ms  VMs peak 242.0 (2050.0 MiB)  disk 0.0 GiB  cpu 52.2%/100.0%  err 0  SLO missed
+suspend-n640-s2                calls 18980  p50 62  p95 1004  p99 2446ms  VMs peak 274.0 (2034.0 MiB)  disk 0.0 GiB  cpu 50.8%/100.0%  err 0  SLO missed
+suspend-n640-s3                calls 18946  p50 64  p95 962  p99 2140ms  VMs peak 248.0 (1958.0 MiB)  disk 0.0 GiB  cpu 52.8%/100.0%  err 0  SLO missed
+--- suspend 640: 0 of 3 seeds met the target
+--- suspend stops at 640
+done; see bench/results/final/20261027-034447/summary.tsv

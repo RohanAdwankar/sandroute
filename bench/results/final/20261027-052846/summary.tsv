@@ -1,0 +1,4 @@
+series	design	tenants	seed	p99ms	met	aborted	peakcpu	minavailMiB
+suspend	suspend	608	1	1007	true		100.0	3667.0
+suspend	suspend	608	2	1762	false		100.0	3221.0
+suspend	suspend	608	3	2455	false		100.0	3311.0

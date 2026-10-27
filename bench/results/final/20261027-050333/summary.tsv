@@ -1,0 +1,4 @@
+series	design	tenants	seed	p99ms	met	aborted	peakcpu	minavailMiB
+oxroute	oxroute	736	1	627	true		100.0	1896.0
+oxroute	oxroute	736	2	687	true		100.0	1858.0
+oxroute	oxroute	736	3	1072	true		100.0	1755.0
