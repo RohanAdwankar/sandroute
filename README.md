@@ -70,12 +70,6 @@ target/release/examples/hundred 100 vm     # 2.0 s and 242 MiB: the read runs in
 target/release/examples/hundred 700 vm     # 18.5 s and 3.1 GiB: 700 microVMs on a 7 GiB laptop
 ```
 
-To compare against another local microVM runtime, `uv run bench/compare/microsandbox_hundred.py 100` does the same job with [microsandbox](https://github.com/superradcompany/microsandbox). It uses 4.6 GiB for 100 sandboxes, and at 130 at once the machine runs out of memory. Here are both, started 130 at once on the same laptop:
-
-[![130 sandboxes at once: microsandbox and sandroute](docs/videos/exhaustion-130.gif)](docs/videos/exhaustion-130.mp4)
-
-*Microsandbox boots all 130 microVMs together, memory climbs to the limit before most have finished, and the run is stopped with 34 done. Sandroute finishes all 130 in 3.4 s.*
-
 ## The SDK
 
 `Sandroute` is one sandbox. Everything is async (tokio) and returns `anyhow::Result`.
@@ -99,31 +93,4 @@ To compare against another local microVM runtime, `uv run bench/compare/microsan
 
 **Isolation.** Every sandbox is its own microVM or its own set of namespaces with a seccomp filter (the Docker default profile's 299 system calls), so tenants cannot see each other or the host. The light sandbox has no network. Whether the guest has a network is set when the VM is built (`scripts/net-setup.sh`).
 
-**More control.** `Sandroute::new(SandrouteOptions { .. })` takes your own VM backend (`MicroVm` with `VmOptions` for Firecracker or Cloud Hypervisor, or `CriVm` for Kata and gVisor), memory and vCPU sizes, the idle window, and the workspace path. The benchmarks in `src/bin/` are built on it.
-
-## Benchmarks
-
-How many tenants one machine serves, replaying 26 recorded agent sessions, is in [docs/capacity.md](docs/capacity.md); the tricks other providers use are in [docs/tricks.md](docs/tricks.md).
-
-| design on a 7 GiB laptop | tenants held (p99 added latency under 1.5 s) |
-|---|---|
-| sandroute | 736 |
-| microVM per tenant, restored from a shared snapshot, released when idle | 640 |
-| the same, kept up | 176 |
-| kill idle VMs and cold boot | 64 |
-| microVM per tenant, cold booted, kept up | 48 |
-| Kata Containers | 40 |
-
-```sh
-target/release/tenants --design oxroute --tenants 64 --minutes 6    # the capacity benchmark
-target/release/tiers                                                  # what one command costs in each tier
-uv run --with matplotlib --with seaborn --with pandas bench/charts.py out/   # the charts
-bench/final/go.sh                                                     # the full run, about 4 hours, on an idle machine
-```
-
-## Test
-
-```sh
-cargo test                                # the router, sandbox, sync, orchestrator and a corpus of recorded commands
-cargo test --test vm_live -- --ignored    # boots real VMs, needs KVM and the setup above
-```
+**More control.** `Sandroute::new(SandrouteOptions { .. })` takes your own VM backend (`MicroVm` with `VmOptions` for Firecracker or Cloud Hypervisor, or `CriVm` for Kata and gVisor), memory and vCPU sizes, the idle window, and the workspace path. 
