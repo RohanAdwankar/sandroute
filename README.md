@@ -31,7 +31,7 @@ cargo build --release --examples --bins
 ```rust
 use sandroute::Sandroute;
 
-let sandbox = Sandroute::create().await?;                    // a fresh, isolated sandbox
+let sandbox = Sandroute::create().await?;                    // a fresh, isolated sandbox: 1 vCPU, 256 MiB (create_with sets both)
 sandbox.write_file("hello.py", "print('hi')").await?;        // files live in /work
 let res = sandbox.run("python3 hello.py", None).await?;      // runs in a microVM, started on demand
 println!("{} (exit {}, ran in {:?})", res.stdout.trim(), res.exit_code, res.tier);
@@ -82,7 +82,8 @@ To compare against another local microVM runtime, `uv run bench/compare/microsan
 
 | | |
 |---|---|
-| `Sandroute::create()` | a sandbox with a fresh, empty workspace |
+| `Sandroute::create()` | a sandbox with a fresh, empty workspace and a VM of 1 vCPU and 256 MiB |
+| `Sandroute::create_with(cpus, mem_mib)` | the same with a VM of the size you give; sandboxes of one size share one snapshot |
 | `Sandroute::open(dir)` | a sandbox over an existing directory; the files appear at `/work`, and what the sandbox changes lands in `dir` |
 | `run(command, cwd)` | run a shell command, returns a `RunResult` |
 | `read_file`, `write_file`, `edit_file`, `glob`, `grep_files` | the file tools; they run in the light sandbox, never in a VM |
